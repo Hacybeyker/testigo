@@ -1,0 +1,12 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="testigo run --dry-run (demo)" type="JetRunConfigurationType">
+    <option name="MAIN_CLASS_NAME" value="testigo.MainKt" />
+    <module name="testigo.main" />
+    <option name="VM_PARAMETERS" value="--enable-native-access=ALL-UNNAMED" />
+    <option name="PROGRAM_PARAMETERS" value="run --dry-run --profile evidencia" />
+    <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/examples/demo-suite" />
+    <method v="2">
+      <option name="Make" enabled="true" />
+    </method>
+  </configuration>
+</component>

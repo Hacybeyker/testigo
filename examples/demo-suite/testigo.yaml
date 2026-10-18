@@ -1,0 +1,37 @@
+# Suite de ejemplo para probar el runner. Ajusta las rutas a tu app.
+version: 1
+
+maestro: { version: "2.11.0" }
+
+app:
+  artifact: build/app-qa-debug.apk   # .apk o .aab, relativo a este archivo
+  package: auto
+
+flows: flows/
+
+# Fija la versión de Maestro del equipo (doctor avisará si la instalada difiere):
+# maestro:
+#   version: "x.y.z"
+
+defaults:
+  profile: dev
+
+video:
+  bitrate_mbps: 4         # de 4 a 8: más alto, más nítido y más pesado
+
+network:
+  capture: chucker        # none si la app no trae Chucker
+  format: txt             # txt (por defecto) | har | ambos
+  hosts:
+    - api.qa.example.com
+
+alerts:
+  slow_ms: 3000
+
+redact:
+  enabled: false                  # true (o --redact): enmascara datos sensibles y corre el leak scan
+  presets: [base, pii, payments]
+  json_keys: [customerId]
+
+evidence:
+  dir: evidence/

@@ -1,0 +1,11 @@
+appId: com.empresa.app.qa
+---
+- tapOn:
+    id: "input_email"
+- inputText: ${USER}
+- tapOn:
+    id: "input_password"
+- inputText: ${PASSWORD}
+- hideKeyboard
+- tapOn:
+    id: "btn_ingresar"

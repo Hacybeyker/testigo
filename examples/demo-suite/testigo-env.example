@@ -1,0 +1,4 @@
+# Copia este archivo como .env.testigo y pon usuarios de prueba ficticios de QA.
+# .env.testigo está en .gitignore: nunca se versiona.
+USER=qa_user@example.com
+PASSWORD=cambia-esto

@@ -1,0 +1,15 @@
+# Gradle e IDE
+.gradle/
+.kotlin/
+build/
+out/
+.idea/
+*.iml
+local.properties
+
+# Nunca se versionan: evidencia y credenciales de prueba
+evidence/
+.env.testigo
+
+# macOS
+.DS_Store

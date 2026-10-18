@@ -1,0 +1,21 @@
+appId: com.empresa.app.qa
+name: actualizar_datos
+tags: [perfil, smoke]
+---
+- launchApp:
+    clearState: true
+- runFlow:
+    file: ../subflows/login.yaml
+    env:
+      USER: ${USER}
+      PASSWORD: ${PASSWORD}
+- tapOn:
+    id: "tab_perfil"
+- tapOn: "Editar datos"
+- tapOn:
+    id: "input_telefono"
+- eraseText
+- inputText: "999888777"
+- tapOn:
+    id: "btn_guardar"
+- assertVisible: "Datos actualizados"

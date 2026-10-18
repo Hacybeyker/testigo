@@ -1,0 +1,30 @@
+# Versiones estables verificadas el 2026-10-16.
+# Gradle 9.7.1 (wrapper) es la más nueva soportada oficialmente por Kotlin 2.4.21.
+
+[versions]
+kotlin = "2.4.21"
+clikt = "5.1.0"
+# Clikt 5.1.0 trae Mordant 3.0.2, que falla en Java 21 al detectar la terminal. 3.1.0 lo corrige.
+mordant = "3.1.0"
+kaml = "0.104.0"
+kotlinx-serialization = "1.11.0"
+junit = "6.1.3"
+# bundletool no se usa como dependencia Maven: se descarga el jar oficial de GitHub y se verifica su SHA-256
+# (ver downloadBundletool en build.gradle.kts). Al subir de versión, actualiza también el hash.
+bundletool = "1.18.3"
+# Lee la copia local de la base de Chucker (Room, modo WAL).
+sqlite-jdbc = "3.53.4.0"
+
+[libraries]
+clikt = { module = "com.github.ajalt.clikt:clikt", version.ref = "clikt" }
+mordant = { module = "com.github.ajalt.mordant:mordant", version.ref = "mordant" }
+kaml = { module = "com.charleskorn.kaml:kaml", version.ref = "kaml" }
+kotlinx-serialization-core = { module = "org.jetbrains.kotlinx:kotlinx-serialization-core", version.ref = "kotlinx-serialization" }
+sqlite-jdbc = { module = "org.xerial:sqlite-jdbc", version.ref = "sqlite-jdbc" }
+junit-bom = { module = "org.junit:junit-bom", version.ref = "junit" }
+junit-jupiter = { module = "org.junit.jupiter:junit-jupiter" }
+junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher" }
+
+[plugins]
+kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
+kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }

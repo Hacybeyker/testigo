@@ -1,0 +1,13 @@
+appId: com.empresa.app.qa
+name: cerrar_sesion
+tags: [perfil, regresion]
+---
+- launchApp:
+    clearState: true
+- runFlow: ../subflows/login.yaml
+- tapOn:
+    id: "tab_perfil"
+- scrollUntilVisible:
+    element: "Cerrar sesión"
+- tapOn: "Cerrar sesión"
+- assertVisible: "Ingresar"

@@ -1,0 +1,13 @@
+appId: com.empresa.app.qa
+name: registro
+tags: [onboarding, smoke]
+---
+- launchApp:
+    clearState: true
+- tapOn: "Crear cuenta"
+- tapOn:
+    id: "input_email"
+- inputText: "nuevo_usuario@example.com"
+- tapOn:
+    id: "btn_continuar"
+- assertVisible: "Revisa tu correo"
