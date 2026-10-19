@@ -56,16 +56,16 @@ En cinco pasos. El detalle de cada uno, con ejemplos, está en la **[guía paso 
 **1. Generar el zip y descomprimirlo** donde quieras dejar el CLI. Desde la carpeta de este repositorio:
 
 ```bash
-./gradlew build                                              # tests y build/distributions/testigo-0.1.0.zip
-unzip build/distributions/testigo-0.1.0.zip -d ~/herramientas
+./gradlew build                                              # tests y build/distributions/testigo-0.2.0.zip
+unzip build/distributions/testigo-0.2.0.zip -d ~/herramientas
 ```
 
-Si alguien de tu equipo ya te pasó el zip, verifícalo con `shasum -a 256 -c testigo-0.1.0.zip.sha256` y descomprímelo igual. Para actualizar, borra esa carpeta y descomprime el zip nuevo en el mismo lugar; lo demás se conserva ([guía](docs/GUIA.md#actualizar-el-cli)).
+Si alguien de tu equipo ya te pasó el zip, o lo bajaste con su `.sha256` de [Releases](https://github.com/Hacybeyker/testigo/releases), verifícalo con `shasum -a 256 -c testigo-0.2.0.zip.sha256` y descomprímelo igual. Para actualizar a una versión nueva, descomprime su zip al lado del anterior, ejecuta una vez su `bin/testigo setup` y borra la carpeta vieja; lo demás se conserva ([guía](docs/GUIA.md#actualizar-el-cli)).
 
 **2. Preparar la máquina.** `testigo setup` revisa lo que hace falta y, con tu confirmación, instala lo que elijas. No usa root ni sudo: todo queda en tu carpeta de usuario.
 
 ```bash
-~/herramientas/testigo-0.1.0/bin/testigo setup
+~/herramientas/testigo-0.2.0/bin/testigo setup
 ```
 
 | Necesitas | Qué hace `testigo setup` si falta |
@@ -110,9 +110,9 @@ tags: [login, smoke]
 
 | Comando | Qué hace |
 | --- | --- |
-| `testigo setup` | Revisa la máquina e instala lo que falte, con tu confirmación y sin root. `--check` solo revisa; `--print-env` muestra las variables para cargarlas a mano. |
+| `testigo setup` | Revisa la máquina e instala lo que falte, con tu confirmación y sin root. Si usas Claude Code, ofrece copiar la skill para escribir flows. `--check` solo revisa; `--print-env` muestra las variables para cargarlas a mano. |
 | `testigo init` | Crea la suite en la carpeta actual: `testigo.yaml`, `flows/` con un flow de demo, `.env.testigo` y `.gitignore`. No pisa nada que exista. |
-| `testigo doctor` | Revisa que todo esté listo para `testigo run` y dice cómo arreglar lo que falta. No instala ni cambia nada. |
+| `testigo doctor` | Revisa que todo esté listo para `testigo run` y dice cómo arreglar lo que falta, también lo que vuelve intermitentes los flows: un Xiaomi sin «Instalar vía USB» o un dispositivo de 16 KB con un build sin alinear. No instala ni cambia nada. |
 | `testigo run` | Ejecuta los flows y genera la evidencia. Sin flags, en una terminal, pregunta qué ejecutar y ofrece guardarlo en `testigo.yaml`. |
 | `testigo list` | Lista los flows de la suite, con su nombre y sus tags. |
 | `testigo --version` | La versión del runner. |
@@ -143,6 +143,7 @@ Cada valor sale, en este orden, del flag, del perfil, de `testigo.yaml` o del va
 | `--out` | carpeta | `evidence.dir`; si no, `evidence/` | Dónde se guarda la evidencia. |
 | `--redact` / `--no-redact` | — | `redact.enabled`; si no, apagado | Enmascara tokens, claves y datos personales, y revisa que no quede ninguno. |
 | `--keep-raw` | — | `evidence.keep_raw`; si no, apagado | Conserva los datos sin procesar en `raw/`. Solo para depurar. |
+| `--repeat` | 1 a 20 | 1 | Corre los flows esas veces, en rondas, y dice cuáles son estables y cuáles fallan solo a veces. |
 | `--dry-run` | — | apagado | Muestra el plan sin tocar el dispositivo ni ejecutar nada. |
 | `--ci` | — | apagado | No pregunta nada y genera `junit.xml`. |
 | `--save` | — | apagado | Guarda en `testigo.yaml` lo que pasaste con `--app`, `--profile`, `--flows` (uno), `--video-bitrate`, `--network-format`, `--redact` u `--out`, sin tocar sus comentarios. |
@@ -164,7 +165,7 @@ Un flag explícito gana sobre el perfil: `--profile evidencia --no-record` es ev
 | Código | Significado |
 | --- | --- |
 | 0 | Todos los flows pasaron. |
-| 1 | Al menos un flow falló. |
+| 1 | Al menos un flow falló, también si con `--repeat` falló una sola vez. |
 | 2 | Entorno o configuración: sin dispositivo, falta una herramienta, o un `testigo.yaml` o un flag con errores. |
 | 3 | La política local-only bloqueó la corrida antes de ejecutar Maestro. |
 | 4 | Con `--redact`, quedaron datos sin enmascarar: la evidencia no es apta para compartir. |
@@ -185,6 +186,8 @@ evidence/20261016-143012_PROJ-123_a1b2c3d/    fecha, ticket del branch y commit
     └── crash.txt      solo si la app se cerró
 ```
 
+Con `--repeat 3`, cada flow tiene una carpeta por ronda (`login/1/`, `login/2/`, `login/3/`), y `summary.md` dice cuántas veces pasó cada uno.
+
 El runner le crea a `evidence/` su propio `.gitignore`, para que nunca termine en un commit.
 
 ## Versión de Maestro
@@ -192,6 +195,18 @@ El runner le crea a `evidence/` su propio `.gitignore`, para que nunca termine e
 Cada suite fija su versión en `maestro.version` de `testigo.yaml`, y así todo el equipo usa la misma. Para cambiarla, edita ese valor y ejecuta `testigo setup` en la carpeta de la suite: descarga esa versión del release oficial y la verifica con el `checksums_sha256.txt` del mismo release. No hace falta cambiar ni recompilar `testigo`. Hasta que la instales, `testigo doctor` y `testigo run` avisan que la instalada es otra.
 
 De Maestro, `testigo` solo usa `maestro test` y `maestro --version`. Si una versión futura cambiara las opciones de `maestro test` que usa, habría que actualizar `testigo`.
+
+## Escribir flows con IA
+
+El zip trae en `skills/testigo-flows/` una skill de [Claude Code](https://code.claude.com/docs) que escribe los flows por ti: lee el código de la app (Views XML o Compose, con ids o sin ellos), confirma los selectores en el dispositivo y corre cada flow con `testigo` hasta que pasa tres veces seguidas. En una app grande, empieza por el inventario: deja el mapa de la app, lo que le falta para ser fácil de probar y un backlog de casos por prioridad.
+
+```bash
+testigo setup                                   # ofrece copiar la skill a ~/.claude/skills
+cd ~/proyectos/MiApp-e2e && claude --add-dir ~/proyectos/MiApp
+# en Claude Code: /testigo-flows escribe los flows de login
+```
+
+`testigo` y Maestro siguen sin salir de tu máquina, pero el código y la pantalla que la skill lee sí van al proveedor del modelo. La [guía de la skill](docs/FLOWS-CON-IA.md) explica cómo limitar lo que ve, los alcances que acepta y cuánto cuesta.
 
 ## Limitaciones
 
@@ -207,6 +222,7 @@ De Maestro, `testigo` solo usa `maestro test` y `maestro --version`. Si una vers
 | --- | --- |
 | [Guía paso a paso](docs/GUIA.md) | Instalar, preparar la app, escribir el primer flow y ejecutarlo, con preguntas frecuentes y problemas comunes. |
 | [Guía de uso](docs/USO.md) | La referencia: cada opción, cada clave de `testigo.yaml`, la evidencia, la sanitización y la política local-only. |
+| [Flows con IA](docs/FLOWS-CON-IA.md) | La skill `testigo-flows` de Claude Code: instalarla, pedirle flows, qué ve y cuánto cuesta. |
 | [Cambios](CHANGELOG.md) | Qué trae cada versión. |
 | [Avisos de terceros](THIRD_PARTY_NOTICES.md) | Las licencias de cada librería y herramienta. |
 
@@ -243,8 +259,8 @@ Está escrito en Kotlin, con Gradle. Se necesita Java 17 o más. La primera comp
 
 ```bash
 ./gradlew test           # solo los tests
-./gradlew build          # tests y build/distributions/testigo-0.1.0.zip con su .sha256
+./gradlew build          # tests y build/distributions/testigo-0.2.0.zip con su .sha256
 ./gradlew installDist    # el CLI en build/install/testigo/bin/testigo, sin zip
 ```
 
-Cómo está organizado el código y las versiones de cada dependencia: [guía de uso › Desarrollo](docs/USO.md#desarrollo).
+La versión de `testigo` está solo en `version` de `build.gradle.kts`: `testigo --version` y el nombre del zip salen de ahí. Cómo está organizado el código y las versiones de cada dependencia: [guía de uso › Desarrollo](docs/USO.md#desarrollo).

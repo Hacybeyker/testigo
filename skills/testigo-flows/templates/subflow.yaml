@@ -1,0 +1,13 @@
+# <Qué hace este subflow, desde qué pantalla empieza y en cuál termina.>
+# Va en flows/subflows/: testigo no lo ejecuta solo.
+appId: <el mismo appId que los flows>
+name: <nombre_del_subflow>
+tags: [subflow]
+---
+# Asume: <pantalla de inicio>
+- tapOn: <selector>
+
+# Deja la app en: <pantalla final>, y lo verifica
+- extendedWaitUntil:
+    visible: <selector de la pantalla final>
+    timeout: 15000

@@ -25,6 +25,9 @@ class FakeAndroidTools(val adb: Path, val java: Path) : CommandRunner {
     /** Package que contiene el artefacto que se instale a continuación. */
     var artifactPackage = "com.empresa.app"
 
+    /** El teléfono pide confirmar la instalación y nadie toca Instalar (MIUI sin «Instalar vía USB»). */
+    var userRestricted = false
+
     private var clock = 0
 
     fun count(tool: String, subcommand: String): Int = commands.count { command ->
@@ -70,6 +73,9 @@ class FakeAndroidTools(val adb: Path, val java: Path) : CommandRunner {
     }
 
     private fun install(): CommandResult {
+        if (userRestricted) {
+            return CommandResult(1, "", "adb: failed to install app.apk: Failure [INSTALL_FAILED_USER_RESTRICTED: Install canceled by user]")
+        }
         val current = signatures[artifactPackage]
         if (current != null && current != artifactSignature) {
             return CommandResult(

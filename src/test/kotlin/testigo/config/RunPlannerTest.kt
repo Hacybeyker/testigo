@@ -69,6 +69,15 @@ class RunPlannerTest {
     }
 
     @Test
+    fun `repeat es 1 por defecto y fuera de 1 a 20 es un error`() {
+        assertEquals(1, plan().repeat)
+        assertEquals(3, plan(RunOptions(repeat = 3)).repeat)
+        val error = assertThrows<TestigoException> { plan(RunOptions(repeat = 0)) }
+        assertEquals("--repeat debe estar entre 1 y 20: 0", error.message)
+        assertThrows<TestigoException> { plan(RunOptions(repeat = 21)) }
+    }
+
+    @Test
     fun `el formato de la red sale del flag, de testigo yaml o es txt`() {
         val config = ProjectConfig(app = AppConfig(artifact = "build/app.aab"), network = NetworkConfig(format = NetworkFormat.HAR))
 

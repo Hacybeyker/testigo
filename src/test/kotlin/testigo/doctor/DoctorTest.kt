@@ -2,6 +2,9 @@ package testigo.doctor
 
 import testigo.TestigoException
 import testigo.ExitCode
+import testigo.artifact.TestApks
+import testigo.artifact.TestApks.Entry
+import testigo.artifact.TestApks.elf
 import testigo.cli.DoctorRenderer
 import testigo.config.AppConfig
 import testigo.config.LoadedProject
@@ -46,6 +49,10 @@ class DoctorTest {
         var databases = "chucker.db\nchucker.db-shm\nchucker.db-wal\n"
         var root = false
         var envIgnored = true
+        var miui = ""
+        var hyperOs = ""
+        var adbInstall = ""
+        var pageSize = "4096"
         val commands = mutableListOf<List<String>>()
 
         override fun run(command: List<String>, timeout: Duration): CommandResult {
@@ -82,6 +89,9 @@ class DoctorTest {
                 }
                 "run-as $pkg id" -> runAs
                 "id -u" -> ok(if (root) "0\n" else "2000\n")
+                "getprop ro.miui.ui.version.name; getprop ro.mi.os.version.name; getprop persist.security.adbinstall" ->
+                    ok("$miui\n$hyperOs\n$adbInstall\n")
+                "getconf PAGE_SIZE; getprop ro.product.cpu.abi" -> ok("$pageSize\narm64-v8a\n")
                 "run-as $pkg ls databases", "ls /data/data/$pkg/databases" -> ok(databases)
                 else -> error("shell inesperado: $shell")
             }
@@ -343,6 +353,53 @@ class DoctorTest {
         doctor(tools)
         val adb = tools.commands.filter { it.first().endsWith("/adb") }.map { it.joinToString(" ") }
         assertTrue(adb.none { " install" in it || " uninstall" in it || " push" in it || " rm " in it || "logcat -c" in it }, adb.toString())
+    }
+
+    @Test
+    fun `en un Xiaomi avisa si Instalar via USB no esta activado, y fuera de Xiaomi no dice nada`() {
+        val off = doctor(FakeTools().apply { miui = "V140"; adbInstall = "0" }).check("Xiaomi")
+        assertEquals(CheckStatus.WARN, off.status)
+        assertEquals("MIUI V140 · «Instalar vía USB» desactivado: cada instalación espera que toques Instalar en el teléfono", off.detail)
+        assertTrue(off.fix!!.contains("INSTALL_FAILED_USER_RESTRICTED"), off.fix)
+
+        val on = doctor(FakeTools().apply { miui = "V816"; hyperOs = "OS1.0"; adbInstall = "1" })
+        assertEquals(CheckStatus.OK, on.check("Xiaomi").status)
+        assertEquals("HyperOS 1.0 · «Instalar vía USB» activado", on.check("Xiaomi").detail)
+        assertEquals(listOf("Conectado", "Xiaomi"), on.sections[1].checks.map { it.name })
+
+        val unknown = doctor(FakeTools().apply { miui = "V140" }).check("Xiaomi")
+        assertEquals(CheckStatus.WARN, unknown.status)
+        assertTrue(unknown.detail.endsWith("no pude saber si «Instalar vía USB» está activado"), unknown.detail)
+
+        assertTrue(doctor().sections.flatMap { it.checks }.none { it.name == "Xiaomi" })
+    }
+
+    @Test
+    fun `con paginas de 16 KB avisa si el build trae libs nativas sin alinear, y con 4 KB no dice nada`() {
+        val apk = tmp.resolve("app/build/outputs/apk/qa/app-qa.apk")
+        val load = {
+            project().also {
+                TestApks.write(apk, listOf(Entry("lib/arm64-v8a/libok.so", elf(16_384)), Entry("lib/arm64-v8a/libvieja.so", elf(4_096))))
+            }
+        }
+
+        val check = doctor(FakeTools().apply { pageSize = "16384" }, load = load).check("16 KB")
+        assertEquals(CheckStatus.WARN, check.status)
+        assertEquals(
+            "páginas de 16 KB y 1 de 2 libs nativas de arm64-v8a sin alinear (libvieja.so): " +
+                "Android muestra «Android App Compatibility» sobre la app en cada flow",
+            check.detail,
+        )
+        assertTrue(check.fix!!.contains("4 KB"), check.fix)
+
+        val aligned = {
+            project().also { TestApks.write(apk, listOf(Entry("lib/arm64-v8a/libok.so", elf(16_384)))) }
+        }
+        val ok = doctor(FakeTools().apply { pageSize = "16384" }, load = aligned).check("16 KB")
+        assertEquals(CheckStatus.OK, ok.status)
+        assertEquals("páginas de 16 KB · 1 lib nativa alineada", ok.detail)
+
+        assertTrue(doctor(load = load).sections.flatMap { it.checks }.none { it.name == "16 KB" })
     }
 
     @Test

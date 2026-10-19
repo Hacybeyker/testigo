@@ -73,6 +73,10 @@ class FlowExecutorTest {
                 echo "Respuesta: $JWT"
                 echo '{"session":"$JWT"}' > "${'$'}out/2026-10-16_143012/${'$'}name/commands.json"
                 echo "[Passed] ${'$'}name (1s)";;
+              *intermitente*)
+                # Falla la primera vez y pasa las siguientes.
+                if [ -f "${'$'}(dirname "${'$'}0")/intermitente.ok" ]; then echo "[Passed] ${'$'}name (1s)"
+                else touch "${'$'}(dirname "${'$'}0")/intermitente.ok"; echo "[Failed] ${'$'}name (2s) (Element not found: Guardar)"; status=1; fi;;
               *) echo "[Passed] ${'$'}name (1s)";;
             esac
             if [ -n "${'$'}stop" ]; then curl -s "${'$'}stop" > /dev/null; fi
@@ -150,6 +154,38 @@ class FlowExecutorTest {
         assertTrue(calls[1].contains("--no-reinstall-driver"), calls[1])
         assertTrue(calls.all { "--device emulator-5554" in it && "--format HTML-DETAILED" in it }, calls.toString())
         assertTrue(calls.all { it.endsWith("MAESTRO_API_URL=http://127.0.0.1:9") }, calls.toString())
+    }
+
+    @Test
+    fun `con repeat corre la lista en rondas, cada corrida en su carpeta, y distingue los intermitentes`() {
+        val script = fakeMaestro()
+        val progress = mutableListOf<String>()
+        val executor = FlowExecutor(MaestroCli(script), now = { LocalDateTime.of(2026, 10, 16, 14, 30, 12) }, progress = { progress += it })
+
+        val result = executor.run(
+            flows = listOf(flow("ok.yaml", "abrir_app"), flow("intermitente.yaml", null)),
+            device = "emulator-5554",
+            env = emptyMap(),
+            evidenceRoot = tmp.resolve("evidence"),
+            appId = "com.empresa.app",
+            repeat = 3,
+        )
+
+        assertEquals(listOf("abrir_app", "intermitente", "abrir_app", "intermitente", "abrir_app", "intermitente"), result.flows.map { it.name })
+        assertEquals(listOf(1, 1, 2, 2, 3, 3), result.flows.map { it.attempt })
+        assertEquals(result.dir.resolve("intermitente/2"), result.flows[3].dir)
+        assertTrue(result.dir.resolve("abrir_app/3/report.html").exists())
+        assertEquals(listOf("estable", "intermitente"), result.stability.map { it.label })
+        assertEquals(listOf("intermitente"), result.flaky)
+        assertEquals("intermitente #1", result.label(result.flows[1]))
+        assertEquals(5, result.passed)
+        assertEquals(ExitCode.FLOW_FAILED, result.exitCode, "un intermitente es un fallo")
+        assertTrue("▶ intermitente (4/6 · ronda 2 de 3)" in progress, progress.toString())
+
+        val calls = script.resolveSibling("calls.txt").readLines()
+        assertEquals(6, calls.size)
+        assertFalse(calls[0].contains("--no-reinstall-driver"), "el driver se instala solo en la primera corrida")
+        assertTrue(calls.drop(1).all { it.contains("--no-reinstall-driver") }, calls.toString())
     }
 
     private class FakeRecorder : Recorder {

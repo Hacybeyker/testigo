@@ -11,7 +11,7 @@ plugins {
 }
 
 group = "testigo"
-version = "0.1.0"
+version = "0.2.0"
 
 // Java 17 es el mínimo que ya exigen Maestro y bundletool: no sumamos ningún runtime.
 java {
@@ -61,6 +61,32 @@ abstract class DownloadVerified : DefaultTask() {
         Files.move(partial, target, StandardCopyOption.REPLACE_EXISTING)
     }
 }
+
+/** Escribe `version` como una constante de Kotlin: `testigo --version`, el HAR y `metadata.json` la leen de ahí. */
+abstract class GenerateBuildInfo : DefaultTask() {
+    @get:Input
+    abstract val appVersion: Property<String>
+
+    @get:OutputDirectory
+    abstract val output: DirectoryProperty
+
+    @TaskAction
+    fun generate() {
+        val file = output.get().file("testigo/GeneratedBuildInfo.kt").asFile
+        file.parentFile.mkdirs()
+        file.writeText(
+            "// Lo genera la tarea generateBuildInfo de build.gradle.kts a partir de `version`: no lo edites.\n" +
+                "package testigo\n\ninternal const val GENERATED_VERSION = \"${appVersion.get()}\"\n",
+        )
+    }
+}
+
+// La versión se cambia solo en `version`, arriba: el código la recibe generada en build/generated/.
+val generateBuildInfo = tasks.register<GenerateBuildInfo>("generateBuildInfo") {
+    appVersion.set(project.version.toString())
+    output.set(layout.buildDirectory.dir("generated/source/buildinfo/main"))
+}
+kotlin.sourceSets.named("main") { kotlin.srcDir(generateBuildInfo) }
 
 val bundletoolVersion = libs.versions.bundletool.get()
 
@@ -113,8 +139,8 @@ tasks.startScripts {
 }
 
 // bundletool va en tools/ de la distribución, fuera del classpath: el jar trae su propia versión de Kotlin.
-// El zip lleva además el README, el CHANGELOG, la licencia del proyecto (LICENSE y NOTICE), las guías (docs/) y los avisos y
-// textos de licencia de las dependencias.
+// El zip lleva además el README, el CHANGELOG, la licencia del proyecto (LICENSE y NOTICE), las guías (docs/), la skill de
+// Claude Code para escribir flows (skills/) y los avisos y textos de licencia de las dependencias.
 distributions {
     main {
         contents {
@@ -125,6 +151,10 @@ distributions {
             from("NOTICE")
             from("THIRD_PARTY_NOTICES.md")
             from("docs") { into("docs") }
+            from("skills") {
+                into("skills")
+                filesMatching("**/scripts/*") { permissions { unix("rwxr-xr-x") } }
+            }
             from("licenses") { into("licenses") }
         }
     }

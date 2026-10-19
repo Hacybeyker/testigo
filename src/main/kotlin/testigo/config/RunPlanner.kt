@@ -82,6 +82,11 @@ class RunPlanner(
             )
         }
 
+        val repeat = options.repeat ?: Repeat.MIN
+        if (repeat !in Repeat.MIN..Repeat.MAX) {
+            throw TestigoException("--repeat debe estar entre ${Repeat.MIN} y ${Repeat.MAX}: $repeat")
+        }
+
         return RunPlan(
             cwd = cwd,
             project = project,
@@ -104,6 +109,7 @@ class RunPlanner(
             keepRaw = keepRaw,
             redact = redact,
             warnings = warnings,
+            repeat = repeat,
         )
     }
 

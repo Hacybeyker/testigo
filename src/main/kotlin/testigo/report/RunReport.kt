@@ -55,37 +55,42 @@ object RunReport {
         }
         val title = listOfNotNull("E2E", git?.ticket, git?.commit, app, context.app.artifact.format.label)
         appendLine("## ${title.joinToString(" · ")}")
-        val outcome = when (result.failed) {
-            0 -> if (result.flows.size == 1) "pasó" else "todos pasaron"
-            1 -> "1 falló"
-            else -> "${result.failed} fallaron"
-        }
         val device = context.device.let { d -> "${d.model} · Android ${d.androidRelease}" + (d.sdk?.let { " (API $it)" } ?: "") }
-        appendLine(
-            listOf(device, "perfil ${context.profile}", quantity(result.flows.size, "flow", "flows"), outcome, FlowExecutor.format(result.duration))
-                .joinToString(" · "),
-        )
+        appendLine((listOf(device, "perfil ${context.profile}") + outcome(result) + FlowExecutor.format(result.duration)).joinToString(" · "))
         appendLine()
-        appendLine("| Flow | Resultado | Duración | Requests | Alertas |")
-        appendLine("| --- | --- | --- | --- | --- |")
-        result.flows.forEach { flow ->
-            val status = if (flow.status == FlowStatus.PASSED) "✅" else "❌"
-            val requests = flow.network?.summary?.requests?.toString() ?: "—"
-            appendLine("| ${cell(flow.name)} | $status | ${FlowExecutor.format(flow.duration)} | $requests | ${cell(alertsCell(flow))} |")
+        if (result.repeat > 1) {
+            appendLine("| Flow | Corridas | Resultado | Duración media | Alertas |")
+            appendLine("| --- | --- | --- | --- | --- |")
+            result.stability.forEach { flow ->
+                val runs = flow.runs.joinToString(" ") { if (it.status == FlowStatus.PASSED) "✅" else "❌" }
+                val alerts = alertsCell(flow.runs.flatMap { run -> alertItems(run).map { "#${run.attempt} $it" } })
+                appendLine(
+                    "| ${cell(flow.name)} | $runs | ${flow.passed}/${flow.runs.size} ${flow.label} | " +
+                        "${FlowExecutor.format(flow.meanDuration)} | ${cell(alerts)} |",
+                )
+            }
+        } else {
+            appendLine("| Flow | Resultado | Duración | Requests | Alertas |")
+            appendLine("| --- | --- | --- | --- | --- |")
+            result.flows.forEach { flow ->
+                val status = if (flow.status == FlowStatus.PASSED) "✅" else "❌"
+                val requests = flow.network?.summary?.requests?.toString() ?: "—"
+                appendLine("| ${cell(flow.name)} | $status | ${FlowExecutor.format(flow.duration)} | $requests | ${cell(alertsCell(alertItems(flow)))} |")
+            }
         }
 
         val failed = result.flows.filter { it.status == FlowStatus.FAILED && it.reason != null }
         if (failed.isNotEmpty()) {
             appendLine()
             appendLine("### Por qué falló")
-            failed.forEach { flow -> appendLine("- **${cell(flow.name)}**: ${cell(flow.reason!!.lines().first())}") }
+            failed.forEach { flow -> appendLine("- **${cell(result.label(flow))}**: ${cell(flow.reason!!.lines().first())}") }
         }
 
         result.flows.forEach { flow ->
             val alerts = flow.network?.summary?.alerts.orEmpty()
             if (alerts.isEmpty()) return@forEach
             appendLine()
-            appendLine("### Alertas de red · ${cell(flow.name)}")
+            appendLine("### Alertas de red · ${cell(result.label(flow))}")
             appendLine("| Método | Endpoint | Status | Veces | Tiempo máx |")
             appendLine("| --- | --- | --- | --- | --- |")
             val groups = groups(alerts)
@@ -95,7 +100,8 @@ object RunReport {
             }
             if (groups.size > MAX_ALERTS_PER_FLOW) {
                 appendLine()
-                appendLine("… y ${groups.size - MAX_ALERTS_PER_FLOW} más en `${flow.name}/network.txt`.")
+                val network = result.dir.relativize(flow.dir.resolve("network.txt")).toString().replace('\\', '/')
+                appendLine("… y ${groups.size - MAX_ALERTS_PER_FLOW} más en `$network`.")
             }
         }
 
@@ -112,7 +118,25 @@ object RunReport {
         appendLine("Carpeta: `${result.dir.displayFrom(cwd)}`")
     }
 
-    internal fun metadata(result: RunResult, context: RunContext, cwd: Path): Map<String, Any?> = linkedMapOf(
+    /** `3 flows`, `todos pasaron`; con `--repeat`, `5 flows × 3`, `14 de 15 pasaron` y cuántos son intermitentes. */
+    private fun outcome(result: RunResult): List<String> {
+        if (result.repeat > 1) {
+            val flaky = result.flaky.size
+            return listOfNotNull(
+                "${quantity(result.stability.size, "flow", "flows")} × ${result.repeat}",
+                "${result.passed} de ${result.flows.size} pasaron",
+                if (flaky > 0) quantity(flaky, "intermitente", "intermitentes") else null,
+            )
+        }
+        val outcome = when (result.failed) {
+            0 -> if (result.flows.size == 1) "pasó" else "todos pasaron"
+            1 -> "1 falló"
+            else -> "${result.failed} fallaron"
+        }
+        return listOf(quantity(result.flows.size, "flow", "flows"), outcome)
+    }
+
+    internal fun metadata(result: RunResult, context: RunContext, cwd: Path): Map<String, Any?> = linkedMapOf<String, Any?>(
         "run_id" to result.id,
         "started_at" to result.startedAt.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME),
         "duration_s" to seconds(result.duration.inWholeMilliseconds),
@@ -139,16 +163,22 @@ object RunReport {
             "java" to System.getProperty("java.version"),
         ),
         "options" to context.options,
-        "flows" to result.flows.map { flow(it, result.dir, cwd) },
+        "flows" to result.flows.map { flow(it, result, cwd) },
         "passed" to result.passed,
         "failed" to result.failed,
         "exit_code" to result.exitCode.code,
         "evidence_status" to result.evidenceStatus.name,
-    )
+    ).apply {
+        if (result.repeat > 1) {
+            put("repeat", result.repeat)
+            put("flaky", result.flaky)
+        }
+    }
 
-    private fun flow(flow: FlowResult, runDir: Path, cwd: Path): Map<String, Any?> {
+    private fun flow(flow: FlowResult, result: RunResult, cwd: Path): Map<String, Any?> {
         val summary = flow.network?.summary
-        return linkedMapOf(
+        val runDir = result.dir
+        return linkedMapOf<String, Any?>(
             "name" to flow.name,
             "file" to flow.flow.path.displayFrom(cwd),
             "status" to if (flow.status == FlowStatus.PASSED) "passed" else "failed",
@@ -177,7 +207,12 @@ object RunReport {
             "network_note" to flow.network?.note,
             "videos" to flow.videos.map { runDir.relativize(it).toString() },
             "leaks" to flow.leaks.map { linkedMapOf("file" to it.file.toString(), "line" to it.line, "rule" to it.rule) },
-        )
+        ).apply {
+            if (result.repeat > 1) {
+                put("attempt", flow.attempt)
+                put("dir", runDir.relativize(flow.dir).toString().replace('\\', '/'))
+            }
+        }
     }
 
     /** JUnit para CI: un testcase por flow; un flow que falló lleva su motivo. */
@@ -188,7 +223,7 @@ object RunReport {
         appendLine(""" timestamp="${result.startedAt.toLocalDateTime().withNano(0).format(DateTimeFormatter.ISO_LOCAL_DATE_TIME)}">""")
         result.flows.forEach { flow ->
             val classname = "testigo." + flow.flow.path.fileName.toString().substringBeforeLast('.')
-            val open = """  <testcase name="${xml(flow.name)}" classname="${xml(classname)}" time="${seconds(flow.duration.inWholeMilliseconds)}""""
+            val open = """  <testcase name="${xml(result.label(flow))}" classname="${xml(classname)}" time="${seconds(flow.duration.inWholeMilliseconds)}""""
             if (flow.status == FlowStatus.PASSED) {
                 appendLine("$open/>")
             } else {
@@ -227,15 +262,17 @@ object RunReport {
         }
     }
 
-    /** `crash: IllegalStateException`, `GET /3/movie/0 → 404 ×3`, `+3 más`. */
-    private fun alertsCell(flow: FlowResult): String {
-        val items = buildList {
-            flow.crash?.let { add("crash: " + it.substringBefore(':').substringAfterLast('.')) }
-            groups(flow.network?.summary?.alerts.orEmpty()).forEach { group ->
-                val outcome = if (group.error) group.status else "${group.maxMs} ms"
-                add("${group.method} ${group.endpoint} → $outcome" + if (group.count > 1) " ×${group.count}" else "")
-            }
+    /** `crash: IllegalStateException`, `GET /3/movie/0 → 404 ×3`. */
+    private fun alertItems(flow: FlowResult): List<String> = buildList {
+        flow.crash?.let { add("crash: " + it.substringBefore(':').substringAfterLast('.')) }
+        groups(flow.network?.summary?.alerts.orEmpty()).forEach { group ->
+            val outcome = if (group.error) group.status else "${group.maxMs} ms"
+            add("${group.method} ${group.endpoint} → $outcome" + if (group.count > 1) " ×${group.count}" else "")
         }
+    }
+
+    /** Las primeras alertas y, si hay más, `+3 más`. */
+    private fun alertsCell(items: List<String>): String {
         if (items.isEmpty()) return "—"
         val shown = items.take(MAX_ALERTS_IN_CELL).joinToString(", ")
         return if (items.size > MAX_ALERTS_IN_CELL) "$shown, +${items.size - MAX_ALERTS_IN_CELL} más" else shown

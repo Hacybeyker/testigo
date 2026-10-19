@@ -59,6 +59,8 @@ data class FlowResult(
     val leaks: List<Leak> = emptyList(),
     /** Archivos binarios (video, capturas): no se pueden sanitizar. */
     val unscanned: List<Path> = emptyList(),
+    /** Con `--repeat`: en qué ronda corrió, desde 1. */
+    val attempt: Int = 1,
 )
 
 data class RunResult(
@@ -70,6 +72,8 @@ data class RunResult(
     /** Con `--redact`: la evidencia se sanitizó y pasó el leak scan. */
     val sanitized: Boolean = false,
     val startedAt: ZonedDateTime = ZonedDateTime.now(),
+    /** `--repeat`: cuántas rondas corrieron. [flows] trae una entrada por corrida, ronda tras ronda. */
+    val repeat: Int = 1,
 ) {
     /** Nombre de la carpeta de la corrida: `20261016-201344_PROJ-123_a1b2c3d`. */
     val id: String get() = dir.fileName.toString()
@@ -77,6 +81,15 @@ data class RunResult(
 
     val passed: Int get() = flows.count { it.status == FlowStatus.PASSED }
     val leaks: List<Leak> get() = flows.flatMap { it.leaks }
+
+    /** Cada flow con sus corridas, en el orden de la primera ronda. */
+    val stability: List<FlowStability> get() = flows.groupBy { it.name }.map { (name, runs) -> FlowStability(name, runs) }
+
+    /** Los flows que pasaron unas veces y fallaron otras. */
+    val flaky: List<String> get() = stability.filter { it.flaky }.map { it.name }
+
+    /** Cómo se nombra una corrida: `login` o, con `--repeat`, `login #2`. */
+    fun label(flow: FlowResult): String = if (repeat > 1) "${flow.name} #${flow.attempt}" else flow.name
     val evidenceStatus: EvidenceStatus
         get() = when {
             !sanitized -> EvidenceStatus.SIN_SANITIZAR
@@ -91,6 +104,19 @@ data class RunResult(
             passed == flows.size -> ExitCode.OK
             else -> ExitCode.FLOW_FAILED
         }
+}
+
+/** Las corridas de un flow con `--repeat`: si pasó siempre, a veces o nunca. */
+data class FlowStability(val name: String, val runs: List<FlowResult>) {
+    val passed: Int get() = runs.count { it.status == FlowStatus.PASSED }
+    val stable: Boolean get() = passed == runs.size
+    val flaky: Boolean get() = passed in 1 until runs.size
+    val label: String get() = when {
+        stable -> "estable"
+        flaky -> "intermitente"
+        else -> "falla siempre"
+    }
+    val meanDuration: Duration get() = runs.map { it.duration }.reduce(Duration::plus) / runs.size
 }
 
 /**
@@ -116,7 +142,8 @@ class FlowExecutor(
 ) {
     /**
      * [appId] se usa en el wrapper de video cuando el flow no lo declara. [runSuffix] va después de la fecha en el
-     * nombre de la carpeta de la corrida (ticket y commit).
+     * nombre de la carpeta de la corrida (ticket y commit). Con [repeat] mayor a 1, la lista entera corre esas veces, ronda
+     * tras ronda, y cada corrida deja su evidencia en `<flow>/<ronda>/`.
      */
     fun run(
         flows: List<FlowFile>,
@@ -125,19 +152,27 @@ class FlowExecutor(
         evidenceRoot: Path,
         appId: String,
         runSuffix: String = "",
+        repeat: Int = 1,
     ): RunResult {
+        require(repeat >= 1) { "repeat debe ser 1 o más: $repeat" }
         val started = System.nanoTime()
         val startedAt = now()
         val runDir = createRunDir(evidenceRoot, startedAt.format(RUN_ID) + runSuffix)
         val names = uniqueNames(flows)
         val redactor = rules?.let { Redactor(it, env) } ?: Redactor.NONE
-        val results = flows.mapIndexed { index, flow ->
-            val name = names[index]
-            progress("▶ $name (${index + 1}/${flows.size})")
-            runFlow(flow, name, runDir.resolve(name), device, env, redactor, appId, reinstallDriver = index == 0).also {
-                val crash = if (it.crash != null) " (crash de la app)" else ""
-                val leaks = if (it.leaks.isNotEmpty()) " · datos sin enmascarar" else ""
-                progress("  ${it.status.symbol} ${it.status.label}$crash · ${format(it.duration)}$leaks")
+        val total = flows.size * repeat
+        val results = (1..repeat).flatMap { attempt ->
+            flows.mapIndexed { index, flow ->
+                val name = names[index]
+                val position = (attempt - 1) * flows.size + index + 1
+                val round = if (repeat > 1) " · ronda $attempt de $repeat" else ""
+                progress("▶ $name ($position/$total$round)")
+                val dir = if (repeat > 1) runDir.resolve(name).resolve(attempt.toString()) else runDir.resolve(name)
+                runFlow(flow, name, dir, device, env, redactor, appId, reinstallDriver = position == 1, attempt = attempt).also {
+                    val crash = if (it.crash != null) " (crash de la app)" else ""
+                    val leaks = if (it.leaks.isNotEmpty()) " · datos sin enmascarar" else ""
+                    progress("  ${it.status.symbol} ${it.status.label}$crash · ${format(it.duration)}$leaks")
+                }
             }
         }
         return RunResult(
@@ -147,6 +182,7 @@ class FlowExecutor(
             keepRaw = keepRaw,
             sanitized = rules != null,
             startedAt = startedAt.atZone(ZoneId.systemDefault()),
+            repeat = repeat,
         )
     }
 
@@ -159,6 +195,7 @@ class FlowExecutor(
         redactor: Redactor,
         appId: String,
         reinstallDriver: Boolean,
+        attempt: Int,
     ): FlowResult {
         dir.createDirectories()
         // Maestro escribe fuera de evidence/: a la carpeta del flow solo entra lo ya sanitizado.
@@ -232,6 +269,7 @@ class FlowExecutor(
             network = networkOutcome,
             leaks = scan?.leaks.orEmpty(),
             unscanned = scan?.unscanned.orEmpty(),
+            attempt = attempt,
         )
     }
 

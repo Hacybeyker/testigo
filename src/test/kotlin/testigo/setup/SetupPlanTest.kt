@@ -4,6 +4,7 @@ import testigo.doctor.Check
 import testigo.doctor.CheckStatus
 import testigo.policy.MaestroEnvironment
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
@@ -167,6 +168,25 @@ class SetupPlanTest {
 
         assertEquals(listOf("build-tools;36.0.0"), android.packages)
         assertEquals(null, android.cmdlineTools, "ya tiene sdkmanager: no descarga las command-line tools")
+    }
+
+    @Test
+    fun `con Claude Code ofrece la skill como opcional, y una copia distinta como actualizacion`() {
+        installEverything()
+        app.resolve("skills/testigo-flows").createDirectories().resolve("SKILL.md").writeText("nueva")
+        assertTrue(SetupPlan.actions(inspect(configured())).none { it is SetupAction.InstallSkill }, "sin ~/.claude no se ofrece")
+
+        home.resolve(".claude").createDirectories()
+        val missing = inspect(configured())
+        assertTrue(SetupPlan.actions(missing).filterIsInstance<SetupAction.InstallSkill>().single().optional)
+        assertEquals(CheckStatus.SKIP, SetupPlan.checks(missing).of("Claude Code").status)
+
+        home.resolve(".claude/skills/testigo-flows").createDirectories().resolve("SKILL.md").writeText("vieja")
+        val outdated = inspect(configured())
+        val update = SetupPlan.actions(outdated).filterIsInstance<SetupAction.InstallSkill>().single()
+        assertFalse(update.optional, "actualizar una copia que ya está no es opcional")
+        assertEquals(home.resolve(".testigo/backups"), update.backups)
+        assertEquals(CheckStatus.WARN, SetupPlan.checks(outdated).of("Claude Code").status)
     }
 
     @Test

@@ -140,6 +140,37 @@ class SetupFlowTest {
     }
 
     @Test
+    fun `la skill de Claude Code se ofrece sin marcar, --yes no la instala y elegida se copia`() {
+        tmp.resolve("testigo-0.1.0/skills/testigo-flows").createDirectories().resolve("SKILL.md").writeText("---\nname: testigo-flows\n---\n")
+        home.resolve(".claude").createDirectories()
+        val skill = home.resolve(".claude/skills/testigo-flows/SKILL.md")
+
+        val cancel = FakeAsker(many = null, confirm = 0)
+        flow(cancel).run(SetupMode.INTERACTIVE)
+        val index = cancel.offered.indexOfFirst { it.title.startsWith("Claude Code") }
+        assertFalse(cancel.offered[index].selected, "es opcional: no viene marcada")
+        assertTrue(cancel.offered.filterIndexed { i, _ -> i != index }.all { it.selected })
+
+        flow(asker = null).run(SetupMode.YES)
+        assertFalse(skill.exists(), "--yes hace lo pendiente, no lo opcional")
+
+        output.clear()
+        val pickSkill = object : Asker {
+            override fun one(title: String, choices: List<Choice>, cursor: Int): Int? = 0
+
+            override fun many(title: String, choices: List<Choice>): List<Int>? = listOf(choices.indexOfFirst { it.title.startsWith("Claude Code") })
+
+            override fun text(title: String): String? = null
+
+            override fun answered(label: String, value: String) = Unit
+        }
+        val code = flow(pickSkill).run(SetupMode.INTERACTIVE)
+        assertEquals(ExitCode.OK, code, output.joinToString("\n"))
+        assertTrue(skill.exists())
+        assertTrue(output.any { "La skill testigo-flows queda lista" in it }, output.joinToString("\n"))
+    }
+
+    @Test
     fun `solo hace lo marcado`() {
         val code = flow(FakeAsker(many = listOf(2), confirm = 0)).run(SetupMode.INTERACTIVE)
 

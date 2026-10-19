@@ -98,6 +98,10 @@ class RunCommand : CliktCommand(name = "run") {
         "--redact",
         help = "Enmascara tokens, claves y datos personales y corre el leak scan. Por defecto, redact.enabled o no.",
     ).nullableFlag("--no-redact")
+    private val repeat by option(
+        "--repeat",
+        help = "Corre los flows N veces seguidas, en rondas, y dice cuáles fallan solo a veces. De 1 a 20. Por defecto, 1.",
+    ).int()
     private val save by option(
         "--save",
         help = "Guarda en testigo.yaml lo que pasaste con --app, --profile, --flows (uno solo), --video-bitrate, --network-format, " +
@@ -126,6 +130,7 @@ class RunCommand : CliktCommand(name = "run") {
             dryRun = dryRun,
             keepRaw = keepRaw,
             redact = redact,
+            repeat = repeat,
         )
 
         val plan = try {
@@ -261,6 +266,7 @@ class RunCommand : CliktCommand(name = "run") {
             plan.out.value,
             appId = preflight.app.packageName,
             runSuffix = Git.runSuffix(git),
+            repeat = plan.repeat,
         )
         val report = RunReport.write(
             result,
@@ -367,6 +373,7 @@ class RunCommand : CliktCommand(name = "run") {
         "logs" to plan.logs.value,
         "redact" to plan.redact.value,
         "keep_raw" to plan.keepRaw.value,
+        "repeat" to plan.repeat,
         "ci" to plan.ci,
         "tags" to plan.tags,
         "exclude_tags" to plan.excludeTags,

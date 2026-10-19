@@ -86,6 +86,7 @@ Lo que tiene una sola opción no se pregunta. Si la terminal no permite listas d
 
 | Opción | Valores | Por defecto | Qué hace |
 | --- | --- | --- | --- |
+| `--repeat` | 1 a 20 | 1 | Corre la lista de flows esas veces, en rondas (todos, y otra vez), y dice de cada flow si es estable, intermitente o falla siempre. Sirve para saber si un flow nuevo es confiable antes de sumarlo a la suite (ver [Repeticiones](#repeticiones)). |
 | `--dry-run` | — | apagado | Muestra el plan y revisa la política local-only, sin tocar el dispositivo ni ejecutar nada. |
 | `--ci` | — | apagado | No pregunta nada (ni modo interactivo ni confirmaciones) y genera `junit.xml`. |
 | `--save` | — | apagado | Guarda en `testigo.yaml` lo que pasaste con `--app`, `--profile`, `--flows` (uno solo), `--video-bitrate`, `--network-format`, `--redact` / `--no-redact` u `--out`, con las mismas reglas que el modo interactivo. Con `--dry-run` no guarda nada. |
@@ -107,7 +108,7 @@ Un perfil es un atajo para `--record`, `--network` y `--logs`. Sirve en scripts 
 | Código | Significado |
 | --- | --- |
 | 0 | Todos los flows pasaron. |
-| 1 | Al menos un flow falló (también por un crash de la app). |
+| 1 | Al menos un flow falló (también por un crash de la app). Con `--repeat`, basta con una corrida que falle. |
 | 2 | Error de entorno o configuración: sin dispositivo, artefacto inválido, falta una herramienta, un `testigo.yaml` con errores, un flow que Maestro no acepta o un flag mal escrito. |
 | 3 | La política local-only bloqueó la corrida. Maestro no se ejecutó. |
 | 4 | Con `--redact`, el leak scan encontró datos sin enmascarar: la evidencia no es apta para compartir. |
@@ -134,6 +135,7 @@ testigo setup --print-env  # muestra las variables, sin cambiar nada: eval "$(te
 | adb, aapt2 | `platform-tools`, `build-tools` | `sdkmanager --sdk_root=<sdk> platform-tools "build-tools;36.0.0"`, solo lo que falta. Antes muestra la licencia del SDK: la aceptas tú. | dentro del SDK |
 | Debug key | existe | La crea con `keytool`, igual que Android Studio. Solo hace falta para un AAB. | `~/.android/debug.keystore` |
 | Terminal | las variables ya están | Escribe el entorno y una línea que lo carga en el perfil (ver abajo). | `~/.testigo/env.sh` y el perfil |
+| Claude Code (opcional) | la skill `testigo-flows` al día | Solo si existe `~/.claude` (o `CLAUDE_CONFIG_DIR`): copia la skill del zip. Instalarla es opcional y no viene marcada; `--yes` no la instala. Si ya hay una copia distinta, la actualiza y deja la anterior en `~/.testigo/backups/`. Un enlace no lo toca. Ver [Flows con IA](FLOWS-CON-IA.md). | `~/.claude/skills/testigo-flows` |
 
 **Java antes de la JVM.** `bin/testigo` busca un Java 17 o más antes de arrancar, en este orden: `JAVA_HOME`, el `java` del PATH, `~/.testigo/jdk/current`, `/usr/libexec/java_home -v 17+` en macOS, el `jbr` de Android Studio (en `/Applications` o `~/Applications`, también las versiones Preview; en Linux, `/opt/android-studio`, `~/android-studio`, `/usr/local/android-studio` o el snap) y `/usr/lib/jvm/*`. Si `JAVA_HOME` apunta a uno más viejo, avisa y usa el que encontró. Sin ninguno, cualquier comando termina con código 2 y pide `testigo setup`; `testigo setup`, en una terminal, ofrece descargar Temurin 21.0.12.1 (SHA-256 fijado en el script, unos 200 MB) y solo con un sí.
 
@@ -190,7 +192,7 @@ testigo init --app ../MiApp/app/build/outputs/apk/debug/app-debug.apk --network 
 
 ## `testigo doctor`
 
-Revisa lo que `testigo run` va a necesitar y, para cada problema, dice qué hacer. Solo lee: no instala, no desinstala ni cambia nada en la máquina ni en el dispositivo. Lo único que toca es adb (`devices`, `getprop`, `dumpsys package`, `run-as`) y una copia temporal de la base de Chucker que se borra al terminar.
+Revisa lo que `testigo run` va a necesitar y, para cada problema, dice qué hacer. Solo lee: no instala, no desinstala ni cambia nada en la máquina ni en el dispositivo. Lo único que toca es adb (`devices`, `getprop`, `getconf PAGE_SIZE`, `dumpsys package`, `run-as`) y una copia temporal de la base de Chucker que se borra al terminar.
 
 | Opción | Valores | Por defecto | Qué hace |
 | --- | --- | --- | --- |
@@ -208,9 +210,11 @@ Qué revisa, y cuándo es un problema (✖) o un aviso (!):
 | | aapt2 | no hay Android SDK Build-Tools | — |
 | | bundletool | falta en la instalación del runner | — |
 | Dispositivo | Conectado | no hay, no autorizó la depuración, está offline o hay varios sin `--device` | — |
+| | Xiaomi (solo MIUI o HyperOS) | — | «Instalar vía USB» está apagado o no se pudo leer: el teléfono pide confirmar cada instalación, también la del driver de Maestro en cada corrida, y sin confirmar falla con `INSTALL_FAILED_USER_RESTRICTED` |
 | Proyecto | Flows | no existe la carpeta de `flows`, un flow viola la política local-only o un archivo no tiene la forma que Maestro exige | no hay flows o un header no se puede leer |
 | | Build | `app.artifact` no existe o no se puede leer, o el package no coincide con `app.package` | `testigo.yaml` no define `app.artifact`, o el build no es debuggable y se usa la red |
 | | Firma (solo AAB) | no hay `app.signing` ni `~/.android/debug.keystore`, o no existe el keystore de `app.signing` | — |
+| | 16 KB (solo si el dispositivo usa páginas de 16 KB) | — | alguna lib nativa (`.so`) de la ABI del dispositivo no está alineada a 16 KB: Android muestra «Android App Compatibility» sobre la app y `clearState` lo vuelve a mostrar en cada flow. Revisa los segmentos `LOAD` del ELF y, en un APK con la lib sin comprimir, dónde empieza dentro del zip |
 | | Instalada | — | la app todavía no está en el dispositivo (`testigo run` la instala) |
 | | run-as | falla, adbd no corre como root y la red usa Chucker | falla con `network.capture: none` |
 | | Chucker | no se puede copiar, o la tabla `transactions` no tiene el esquema de Chucker 4.x | todavía no hay base: la app no hizo ninguna llamada |
@@ -228,10 +232,11 @@ Herramientas
                 → Instala esa versión con testigo setup desde esta carpeta o, si el equipo ya cambió de versión, actualiza maestro.version.
   ✔ adb         36.0.0 · ~/Library/Android/sdk/platform-tools/adb
   ✔ aapt2       build-tools 36.1.0 · ~/Library/Android/sdk/build-tools/36.1.0/aapt2
-  ✔ bundletool  1.18.3 · ~/herramientas/testigo-0.1.0/tools/bundletool-all-1.18.3.jar
+  ✔ bundletool  1.18.3 · ~/herramientas/testigo-0.2.0/tools/bundletool-all-1.18.3.jar
 
 Dispositivo
   ✔ Conectado   8a7b6c5d · 2201117TG · Android 13 (API 33)
+  ✔ Xiaomi      MIUI V140 · «Instalar vía USB» activado
 
 Proyecto · testigo.yaml
   ✔ Flows       5 flows en flows/ · cumplen la política local-only
@@ -376,6 +381,22 @@ evidence/20261016-143012_PROJ-123_a1b2c3d/   # fecha, ticket del branch y commit
 
 El primer flow instala el driver de Maestro y los siguientes lo reutilizan. Si un flow falla, los demás igual se ejecutan.
 
+### Repeticiones
+
+Con `--repeat N`, la lista de flows corre N veces, ronda tras ronda: todos los flows, y otra vez, como en el día a día y no un mismo flow seguido. Cada corrida deja su evidencia en una carpeta por ronda:
+
+```
+evidence/20261016-143012_PROJ-123_a1b2c3d/
+├── summary.md        cada flow con sus corridas (✅ ❌ ✅), 2/3 y si es estable, intermitente o falla siempre
+├── metadata.json     una entrada por corrida, con attempt y dir; además repeat y flaky
+└── login/
+    ├── 1/            lo mismo que la carpeta de un flow: report.html, video.mp4, network.txt…
+    ├── 2/
+    └── 3/
+```
+
+La consola resume cada flow en una línea y detalla solo las corridas que fallaron, con el motivo y su `report.html`. Un flow intermitente hace terminar la corrida con código 1, igual que uno que falla siempre: no es confiable. En `junit.xml` (con `--ci`), cada corrida es un testcase (`login #2`).
+
 **`.gitignore`.** La primera vez, el runner escribe en la carpeta de evidencia un `.gitignore` que la ignora entera: la evidencia trae tokens y datos de la app y nunca debe terminar en un commit, aunque falte en el `.gitignore` de la suite.
 
 **Si la corrida se corta** (Ctrl+C), el runner borra lo temporal antes de salir: el wrapper de video junto al flow, los videos que quedaban en el dispositivo, logcat corriendo, los datos crudos en carpetas temporales y el archivo temporal con la clave del keystore. Termina con código 130; la carpeta de la corrida queda con lo que alcanzó a escribir, sin `summary.md`.
@@ -454,15 +475,15 @@ Cada proceso de Maestro se lanza con `MAESTRO_CLI_NO_ANALYTICS=1`, `MAESTRO_DISA
 | Dispositivo o emulador | Donde corren los flows | Un teléfono con *Depuración USB* o un emulador con imagen Google APIs. |
 | La app | Lo que se prueba | Un APK o AAB de cualquier build type, de preferencia debuggable; para la red, con Chucker. Ver [Requisitos de la app](../README.md#requisitos-de-la-app). |
 
-**Desde el zip.** El zip se genera con `./gradlew build` (ver [Desarrollo](#desarrollo)) y lleva `bin/`, `lib/`, `tools/` (bundletool), el README, el `CHANGELOG.md`, `LICENSE` y `NOTICE`, `docs/` con esta guía y la [guía paso a paso](GUIA.md), `THIRD_PARTY_NOTICES.md` y `licenses/`:
+**Desde el zip.** El zip se genera con `./gradlew build` (ver [Desarrollo](#desarrollo)) y lleva `bin/`, `lib/`, `tools/` (bundletool), el README, el `CHANGELOG.md`, `LICENSE` y `NOTICE`, `docs/` con esta guía, la [guía paso a paso](GUIA.md) y la de [flows con IA](FLOWS-CON-IA.md), `skills/` con la skill de Claude Code para escribir flows (`testigo setup` ofrece copiarla), `THIRD_PARTY_NOTICES.md` y `licenses/`:
 
 ```bash
-shasum -a 256 -c testigo-0.1.0.zip.sha256              # verifica que el zip llegó entero
-unzip testigo-0.1.0.zip -d ~/herramientas
-~/herramientas/testigo-0.1.0/bin/testigo setup         # prepara la máquina y deja testigo en el PATH
+shasum -a 256 -c testigo-0.2.0.zip.sha256              # verifica que el zip llegó entero
+unzip testigo-0.2.0.zip -d ~/herramientas
+~/herramientas/testigo-0.2.0/bin/testigo setup         # prepara la máquina y deja testigo en el PATH
 ```
 
-En Windows (todavía sin probar) se descomprime igual, se agrega `testigo-0.1.0\bin` al PATH y el comando es `testigo` (`bin\testigo.bat`).
+En Windows (todavía sin probar) se descomprime igual, se agrega `testigo-0.2.0\bin` al PATH y el comando es `testigo` (`bin\testigo.bat`).
 
 **Actualizar.** Se borra la carpeta del CLI y se descomprime el zip nuevo en el mismo lugar (`command -v testigo` dice dónde está). El estado del runner, el Java descargado y la configuración de la terminal viven aparte, en `~/.testigo/`, y no cambian. Si la carpeta nueva queda en otro lugar o con otro nombre (otra versión), `bin/testigo setup` desde ella actualiza el PATH. Detalle en la [guía](GUIA.md#actualizar-el-cli).
 
@@ -473,7 +494,7 @@ En Windows (todavía sin probar) se descomprime igual, se agrega `testigo-0.1.0\
 ### Compilar y probar
 
 ```bash
-./gradlew build          # compila, corre los tests y deja build/distributions/testigo-0.1.0.zip y su .sha256
+./gradlew build          # compila, corre los tests y deja build/distributions/testigo-0.2.0.zip y su .sha256
 ./gradlew installDist    # deja el CLI en build/install/testigo/bin/testigo, sin zip
 
 # Atajo contra la suite de ejemplo, sin instalar:
@@ -482,7 +503,9 @@ En Windows (todavía sin probar) se descomprime igual, se agrega `testigo-0.1.0\
 
 Antes de compilar, `./scripts/check-env.sh` revisa que la máquina tenga Java, Maestro y el Android SDK.
 
-En IntelliJ IDEA: **File > Open** sobre esta carpeta, un **Gradle JVM** 17 o superior en **Settings > Build Tools > Gradle**, y la configuración incluida **testigo run --dry-run (demo)**.
+**Versión.** Está en un solo lugar: `version` de `build.gradle.kts`. La tarea `generateBuildInfo` la escribe en `build/generated/` como una constante que leen `testigo --version`, `metadata.json` y el HAR, y el zip toma su nombre. Para lanzar otra, se cambia ahí y en el `CHANGELOG.md`.
+
+En IntelliJ IDEA: **File > Open** sobre esta carpeta, un **Gradle JVM** 17 o superior en **Settings > Build Tools > Gradle**, y la configuración incluida **testigo run --dry-run (demo)**. Hasta el primer `./gradlew build`, el IDE marca `GENERATED_VERSION` como desconocida: la genera ese build.
 
 ### Estructura
 
@@ -509,6 +532,8 @@ src/main/kotlin/testigo/
 gradle/start-scripts/  búsqueda de Java ≥ 17 (y descarga con testigo setup) que se agrega a bin/testigo; revisión en bin/testigo.bat
 docs/GUIA.md           la guía paso a paso; va en el zip
 docs/USO.md            esta guía; va en el zip
+docs/FLOWS-CON-IA.md   cómo usar la skill de Claude Code; va en el zip
+skills/testigo-flows/  la skill de Claude Code para escribir flows; va en el zip
 CHANGELOG.md           qué trae cada versión; va en el zip
 LICENSE y NOTICE       la licencia del proyecto (Apache 2.0); van en el zip
 THIRD_PARTY_NOTICES.md licencias de las dependencias; va en el zip con licenses/

@@ -1,0 +1,33 @@
+# Mapa de <app> para escribir flows de Maestro. Lo mantiene la skill testigo-flows.
+# Esquema: references/app-map.md de la skill.
+version: 1
+app:
+  package: <applicationId con sufijo>
+  source: <ruta al repositorio de la app>
+  commit: <git rev-parse --short HEAD>
+  variant: <build type y flavor>
+  locales: [<es>, <en>]
+  ids: <views | testtags | partial | none>
+privacy: <code-only | masked | hierarchy>
+
+env: []
+
+screens:
+  <pantalla>:
+    module: <módulo>
+    source: <archivo>
+    kind: <compose | views | mixed | webview>
+    reach: <cómo se llega>
+    window: main
+    elements:
+      <elemento>:
+        selector: { <id | text>: <valor> }
+        string: <recurso de strings.xml, si es por texto>
+        dynamic: false
+        confirmed: false
+    flows: []
+    quirks: []
+
+subflows: {}
+
+gaps: []

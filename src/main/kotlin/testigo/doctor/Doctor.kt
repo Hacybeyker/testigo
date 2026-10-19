@@ -14,6 +14,7 @@ import testigo.artifact.ArtifactInfo
 import testigo.artifact.ArtifactInspector
 import testigo.artifact.Bundletool
 import testigo.artifact.DebugKeystore
+import testigo.artifact.NativeLibs
 import testigo.config.LoadedProject
 import testigo.config.NetworkMode
 import testigo.config.ProjectConfig
@@ -234,7 +235,39 @@ class Doctor(
         } catch (e: TestigoException) {
             Check("Conectado", CheckStatus.FAIL, e.message.orEmpty().lines().first(), deviceFix(e.message.orEmpty()))
         }
-        return DoctorSection("Dispositivo", listOf(check))
+        return DoctorSection("Dispositivo", listOfNotNull(check, miui(adb)))
+    }
+
+    /**
+     * Xiaomi (MIUI o HyperOS) pide confirmar en el teléfono cada instalación por USB, y Maestro instala su driver en cada
+     * corrida: sin «Instalar vía USB», falla con INSTALL_FAILED_USER_RESTRICTED. Solo lee tres propiedades del sistema.
+     */
+    private fun miui(adb: Adb): Check? {
+        val device = deviceInfo ?: return null
+        val props = try {
+            adb.shell(device.serial, "getprop ro.miui.ui.version.name; getprop ro.mi.os.version.name; getprop persist.security.adbinstall")
+        } catch (e: TestigoException) {
+            return null
+        }
+        if (!props.ok) return null
+        val lines = props.stdout.lines().map { it.trim() }
+        val miui = lines.getOrNull(0).orEmpty()
+        val hyperOs = lines.getOrNull(1).orEmpty()
+        val system = when {
+            hyperOs.isNotEmpty() -> "HyperOS ${hyperOs.removePrefix("OS")}"
+            miui.isNotEmpty() -> "MIUI $miui"
+            else -> return null
+        }
+        return when (lines.getOrNull(2)) {
+            "1" -> Check("Xiaomi", CheckStatus.OK, "$system · «Instalar vía USB» activado")
+            "0" -> Check(
+                "Xiaomi",
+                CheckStatus.WARN,
+                "$system · «Instalar vía USB» desactivado: cada instalación espera que toques Instalar en el teléfono",
+                MIUI_FIX,
+            )
+            else -> Check("Xiaomi", CheckStatus.WARN, "$system · no pude saber si «Instalar vía USB» está activado", MIUI_FIX)
+        }
     }
 
     private fun deviceFix(message: String): String? {
@@ -272,6 +305,7 @@ class Doctor(
         val (buildCheck, app) = build(project)
         checks += buildCheck
         signing(project, app)?.let { checks += it }
+        pages(app)?.let { checks += it }
         val packageName = app?.packageName ?: config.app.packageName.takeIf { it != "auto" }
         val installed = installed(packageName, app).also { checks += it.first }.second
         val files = runAs(packageName, installed, chucker).also { checks += it.first }.second
@@ -380,6 +414,45 @@ class Doctor(
             "Crea la debug key con testigo setup (o a mano: ${DebugKeystore.CREATE_COMMAND}), o define app.signing en $configName.",
         )
         return Check("Firma", CheckStatus.OK, "debug key · ${tilde(debugKey)}")
+    }
+
+    /**
+     * Con páginas de 16 KB, Android muestra «Android App Compatibility» sobre la app si sus libs nativas no están alineadas,
+     * y `clearState` lo vuelve a mostrar en cada flow. Solo aparece si el dispositivo usa 16 KB.
+     */
+    private fun pages(app: ArtifactInfo?): Check? {
+        val adb = adb ?: return null
+        val device = deviceInfo ?: return null
+        if (app == null) return null
+        val result = try {
+            adb.shell(device.serial, "getconf PAGE_SIZE; getprop ro.product.cpu.abi")
+        } catch (e: TestigoException) {
+            return null
+        }
+        val lines = result.stdout.lines().map { it.trim() }
+        if (!result.ok || lines.firstOrNull()?.toLongOrNull() != NativeLibs.PAGE_16K) return null
+        val abi = lines.getOrNull(1)?.takeIf { it.isNotEmpty() }
+        val libs = try {
+            NativeLibs.scan(app.artifact.path, app.artifact.format, abi)
+        } catch (e: java.io.IOException) {
+            return Check("16 KB", CheckStatus.WARN, "el dispositivo usa páginas de 16 KB y no pude leer las libs nativas del build: ${e.message}")
+        }
+        val where = abi ?: "64 bits"
+        if (libs.isEmpty()) return Check("16 KB", CheckStatus.OK, "páginas de 16 KB · el build no trae libs nativas para $where")
+        val unaligned = libs.filterNot { it.aligned }
+        if (unaligned.isEmpty()) {
+            return Check("16 KB", CheckStatus.OK, "páginas de 16 KB · ${quantity(libs.size, "lib nativa alineada", "libs nativas alineadas")}")
+        }
+        val names = unaligned.map { it.name }.distinct()
+        val shown = names.take(3).joinToString(", ") + if (names.size > 3) " y ${names.size - 3} más" else ""
+        return Check(
+            "16 KB",
+            CheckStatus.WARN,
+            "páginas de 16 KB y ${unaligned.size} de ${libs.size} libs nativas de $where sin alinear ($shown): " +
+                "Android muestra «Android App Compatibility» sobre la app en cada flow",
+            "Usa un dispositivo o emulador de 4 KB (una imagen de sistema sin «16 KB»), o alinea el build: AGP 8.5.1 o más, " +
+                "NDK r28 o más, y dependencias con esas libs ya alineadas. Mientras tanto, los flows tienen que cerrar el aviso.",
+        )
     }
 
     private fun installed(packageName: String?, app: ArtifactInfo?): Pair<Check, InstalledPackage?> {
@@ -545,5 +618,7 @@ class Doctor(
     private companion object {
         const val ENV_FILE = ".env.testigo"
         const val JAVA_FIX = "Ejecuta testigo setup, o apunta JAVA_HOME a un JDK 17 o más nuevo (por ejemplo el jbr de Android Studio)."
+        const val MIUI_FIX = "Actívalo en Opciones de desarrollador › «Instalar vía USB» (MIUI pide entrar con una cuenta Mi). " +
+            "Si no, testigo run falla con INSTALL_FAILED_USER_RESTRICTED cuando no alcanzas a tocar Instalar."
     }
 }

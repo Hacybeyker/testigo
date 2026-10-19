@@ -36,6 +36,8 @@ data class RunOptions(
     val keepRaw: Boolean = false,
     /** `--redact` / `--no-redact`. */
     val redact: Boolean? = null,
+    /** `--repeat`: cuántas veces corre cada flow. */
+    val repeat: Int? = null,
 ) {
     override fun toString(): String = "RunOptions(envKeys=${env.keys}, ...)"
 }
@@ -80,7 +82,15 @@ data class RunPlan(
     /** Sanitización y leak scan. */
     val redact: Resolved<Boolean>,
     val warnings: List<String>,
+    /** Cuántas veces corre la lista de flows, en rondas. 1 es una corrida normal. */
+    val repeat: Int = 1,
 )
+
+/** Límites de `--repeat`: más de [MAX] corridas seguidas suele ser un error de tipeo. */
+object Repeat {
+    const val MIN = 1
+    const val MAX = 20
+}
 
 /**
  * Red que corresponde a un perfil cuando no se pasa `--network`:

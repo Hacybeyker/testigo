@@ -171,6 +171,7 @@ class Installer(
 
     companion object {
         private const val SIGNATURE_MISMATCH = "INSTALL_FAILED_UPDATE_INCOMPATIBLE"
+        private const val USER_RESTRICTED = "INSTALL_FAILED_USER_RESTRICTED"
 
         internal val NO_SIGNING_KEY =
             "No hay con qué firmar los APKs que bundletool genera desde el AAB: testigo.yaml no tiene app.signing y no existe " +
@@ -185,10 +186,13 @@ class Installer(
             val reason = lines.firstOrNull { "Failure [" in it || "INSTALL_" in it || it.startsWith("Error") }
                 ?: lines.lastOrNull()
                 ?: "código ${result.exitCode}"
-            return if ("NO_CERTIFICATES" in reason) {
-                "$reason\n  Los APKs quedaron sin firma: no existe ~/.android/debug.keystore. Define app.signing en testigo.yaml."
-            } else {
-                reason
+            return when {
+                "NO_CERTIFICATES" in reason ->
+                    "$reason\n  Los APKs quedaron sin firma: no existe ~/.android/debug.keystore. Define app.signing en testigo.yaml."
+                USER_RESTRICTED in reason ->
+                    "$reason\n  El teléfono pidió confirmar la instalación y nadie tocó Instalar. En un Xiaomi, activa «Instalar vía USB» " +
+                        "en las opciones de desarrollador; testigo doctor lo revisa."
+                else -> reason
             }
         }
 

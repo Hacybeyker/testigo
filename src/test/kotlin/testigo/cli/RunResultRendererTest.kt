@@ -44,6 +44,29 @@ class RunResultRendererTest {
     }
 
     @Test
+    fun `con repeat muestra cuantas veces paso cada flow y el detalle de las corridas que fallaron`() {
+        val dir = cwd.resolve("evidence/20261016-170000")
+        val failed = flow().copy(
+            status = FlowStatus.FAILED,
+            reason = "[Failed] login (5s) (Element not found: Hola)",
+            attempt = 2,
+            dir = dir.resolve("login/2"),
+            report = dir.resolve("login/2/report.html"),
+        )
+        val result = RunResult(dir, listOf(flow().copy(attempt = 1), failed, flow().copy(attempt = 3)), 40.seconds, repeat = 3)
+
+        val text = RunResultRenderer.render(result, cwd)
+
+        assertEquals(ExitCode.FLOW_FAILED, result.exitCode)
+        assertTrue(text.contains("Resultado: 2 de 3 corridas pasaron · 1 flow × 3 · 1 intermitente · 40.0 s"), text)
+        assertTrue(text.contains("  ! login    2/3  intermitente  media 12.0 s"), text)
+        assertTrue(text.contains("      #2  falló · 12.0 s"), text)
+        assertTrue(text.contains("          [Failed] login (5s) (Element not found: Hola)"), text)
+        assertTrue(text.contains("          evidence/20261016-170000/login/2/report.html"), text)
+        assertFalse(text.contains("#1") || text.contains("#3"), "las corridas que pasaron no se detallan")
+    }
+
+    @Test
     fun `sin leaks no hay aviso`() {
         val result = RunResult(cwd.resolve("evidence/20261016-170000"), listOf(flow()), 13.seconds)
 

@@ -39,8 +39,9 @@ object RunPlanRenderer {
             Row("Sanitización", redactLabel(plan), plan.redact.source),
             Row("Datos crudos", rawLabel(plan), plan.keepRaw.source),
             Row("Modo CI", yesNo(plan.ci), null),
+            Row("Repeticiones", repeatLabel(plan), null).takeIf { plan.repeat > 1 },
             Row("Local-only", policyLabel(policy), null),
-        )
+        ).filterNotNull()
         val valueWidth = rows.maxOf { it.value.length }.coerceAtMost(MAX_VALUE_WIDTH)
         rows.forEach { row ->
             val line = buildString {
@@ -105,6 +106,9 @@ object RunPlanRenderer {
         }
         if (filters.isNotEmpty()) append(" (${filters.joinToString(" · ")})")
     }
+
+    private fun repeatLabel(plan: RunPlan): String =
+        "${plan.repeat} · ${quantity(plan.flows.size * plan.repeat, "corrida", "corridas")}, en rondas: todos los flows, luego otra vez"
 
     private fun envLabel(plan: RunPlan): String {
         val env = plan.env

@@ -18,7 +18,7 @@ class MainTest {
     @Test
     fun `help, version y los codigos del runner se conservan`() {
         assertEquals(0, exitCode(PrintHelpMessage(null)))
-        assertEquals(0, exitCode(PrintMessage("testigo version 0.1.0")))
+        assertEquals(0, exitCode(PrintMessage("testigo version ${BuildInfo.VERSION}")))
         assertEquals(4, exitCode(ProgramResult(4)))
         assertEquals(130, exitCode(ProgramResult(130)))
     }

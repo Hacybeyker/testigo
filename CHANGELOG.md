@@ -2,6 +2,22 @@
 
 Los cambios importantes de `testigo`, de la versión más nueva a la más vieja. El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y las versiones, [Semantic Versioning](https://semver.org/lang/es/).
 
+## 0.2.0 - 2026-10-19
+
+Para actualizar desde 0.1.0: descomprime el zip nuevo al lado del anterior, ejecuta una vez `~/herramientas/testigo-0.2.0/bin/testigo setup` y borra la carpeta de 0.1.0. Sin `--repeat`, la evidencia, `metadata.json`, los flags y los códigos de salida son los de 0.1.0.
+
+### Agregado
+
+- Skill de Claude Code `testigo-flows` en `skills/`, también en el zip: arma el mapa de la app, escribe flows para Views XML o Compose (con o sin ids) y los valida con `testigo` hasta que pasan tres veces seguidas. Guía en `docs/FLOWS-CON-IA.md`.
+- `testigo run --repeat N`: corre los flows N veces, en rondas, con la evidencia de cada corrida en `<flow>/<ronda>/`. La consola y `summary.md` dicen de cada flow si es estable, intermitente o falla siempre; `metadata.json` agrega `repeat`, `flaky` y, por corrida, `attempt` y `dir`.
+- `testigo doctor` avisa en un Xiaomi (MIUI o HyperOS) si «Instalar vía USB» está apagado, y en un dispositivo con páginas de 16 KB si el build trae libs nativas sin alinear, que hacen aparecer «Android App Compatibility» sobre la app.
+- `testigo setup` ofrece copiar la skill a `~/.claude/skills` si Claude Code está instalado, y la actualiza cuando cambia, con un respaldo de la anterior en `~/.testigo/backups/`. Es opcional y `--yes` no la instala.
+
+### Cambiado
+
+- Si la instalación falla con `INSTALL_FAILED_USER_RESTRICTED`, el error dice qué activar en el teléfono.
+- `testigo --version` sale de la versión del build (`version` en `build.gradle.kts`): ya no se cambia en dos lugares.
+
 ## 0.1.0 - 2026-10-17
 
 Primera versión.

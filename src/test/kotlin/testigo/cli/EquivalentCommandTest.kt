@@ -57,6 +57,12 @@ class EquivalentCommandTest {
     }
 
     @Test
+    fun `incluye --repeat solo si es mas de una vez`() {
+        assertFalse("--repeat" in build(RunOptions(profile = Profile.DEV, repeat = 1)))
+        assertTrue(build(RunOptions(profile = Profile.DEV, repeat = 3)).endsWith(" --repeat 3"))
+    }
+
+    @Test
     fun `incluye --redact o --no-redact solo si vino por flag`() {
         assertTrue(build(RunOptions(redact = true)).endsWith(" --redact"))
         assertTrue(build(RunOptions(redact = false)).endsWith(" --no-redact"))

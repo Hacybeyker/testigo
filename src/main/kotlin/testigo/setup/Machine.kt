@@ -53,6 +53,8 @@ data class MachineState(
     val envFileText: String?,
     val profileText: String?,
     val cmdlineTools: Download?,
+    /** La skill de Claude Code, si esta instalación la trae y Claude Code está en la máquina. */
+    val skill: ClaudeSkill? = null,
 ) {
     /** Un SDK de verdad, no solo la carpeta: tiene alguna de sus herramientas. */
     val sdkExists: Boolean get() = SDK_PARTS.any { sdkRoot.resolve(it).isDirectory() }
@@ -135,6 +137,7 @@ object Machine {
             envFileText = shell.envFile.readOrNull(),
             profileText = shell.profile?.readOrNull(),
             cmdlineTools = CommandLineTools.download(osName, arch),
+            skill = ClaudeSkill.inspect(env, home, appHome),
         )
     }
 
@@ -151,6 +154,9 @@ object Machine {
 
 /** Una tarea de `testigo setup`. Ninguna usa root: todo queda dentro de la carpeta del usuario. */
 sealed class SetupAction(val name: String) {
+    /** Opcional: no viene marcada y `--yes` no la hace. */
+    open val optional: Boolean get() = false
+
     class InstallMaestro(val version: String, val dir: Path, val replaces: String?) : SetupAction("Maestro")
 
     class InstallAndroidSdk(val root: Path, val packages: List<String>, val cmdlineTools: Download?) : SetupAction("Android SDK")
@@ -158,6 +164,14 @@ sealed class SetupAction(val name: String) {
     class CreateDebugKeystore(val file: Path) : SetupAction("Debug key")
 
     class ConfigureTerminal(val shell: ShellProfile) : SetupAction("Terminal")
+
+    /** Copia la skill de Claude Code. Si reemplaza una copia distinta, la guarda antes en [backups]. */
+    class InstallSkill(val skill: ClaudeSkill, val backups: Path) : SetupAction("Claude Code") {
+        val update: Boolean get() = skill.status == ClaudeSkill.Status.OUTDATED
+
+        /** Instalarla es opcional; actualizar una que ya está, no. */
+        override val optional: Boolean get() = !update
+    }
 }
 
 /** Las reglas de `testigo setup`: qué está bien, qué falta y qué se ofrece hacer. */
@@ -175,6 +189,9 @@ object SetupPlan {
             sdkInstalled = s.sdkExists || actions.any { it is SetupAction.InstallAndroidSdk },
         )
         if (terminalPending(s, predicted)) actions += SetupAction.ConfigureTerminal(s.shell)
+        s.skill?.takeIf { it.status == ClaudeSkill.Status.MISSING || it.status == ClaudeSkill.Status.OUTDATED }?.let {
+            actions += SetupAction.InstallSkill(it, s.state.resolve("backups"))
+        }
         return actions
     }
 
@@ -268,7 +285,8 @@ object SetupPlan {
 
     // --- Lo que se muestra ----------------------------------------------------------------------------------
 
-    fun checks(s: MachineState): List<Check> = listOf(java(s), maestro(s), sdk(s), adb(s), aapt2(s), debugKey(s), terminal(s))
+    fun checks(s: MachineState): List<Check> =
+        listOf(java(s), maestro(s), sdk(s), adb(s), aapt2(s), debugKey(s), terminal(s)) + listOfNotNull(skill(s))
 
     private fun java(s: MachineState): Check {
         val where = "${s.javaVersion} · ${s.show(s.javaHome)}"
@@ -321,6 +339,20 @@ object SetupPlan {
     private fun debugKey(s: MachineState): Check =
         s.debugKeystore?.let { Check("Debug key", CheckStatus.OK, s.show(it)) }
             ?: Check("Debug key", CheckStatus.WARN, "no existe ${s.show(s.debugKeystoreTarget)}: hace falta para probar un AAB")
+
+    private fun skill(s: MachineState): Check? {
+        val skill = s.skill ?: return null
+        val where = s.show(skill.target)
+        return when (skill.status) {
+            ClaudeSkill.Status.MISSING -> Check("Claude Code", CheckStatus.SKIP, "sin la skill testigo-flows (opcional, para escribir flows con IA)")
+            ClaudeSkill.Status.CURRENT -> Check("Claude Code", CheckStatus.OK, "skill testigo-flows al día · $where")
+            ClaudeSkill.Status.OUTDATED -> Check("Claude Code", CheckStatus.WARN, "la skill testigo-flows de $where no es la de esta versión de testigo")
+            ClaudeSkill.Status.LINK -> {
+                val link = ClaudeSkill.linkTarget(skill.target)?.let { " a ${s.show(it)}" }.orEmpty()
+                Check("Claude Code", CheckStatus.OK, "skill testigo-flows · $where es un enlace$link: la actualizas tú")
+            }
+        }
+    }
 
     private fun terminal(s: MachineState): Check {
         val actions = actions(s)

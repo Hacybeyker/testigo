@@ -94,6 +94,16 @@ class InstallerTest {
     }
 
     @Test
+    fun `si el telefono no deja instalar por USB dice que activar`() {
+        tools.userRestricted = true
+
+        val error = assertThrows(TestigoException::class.java) { installer().ensureInstalled(device, app(ArtifactFormat.APK)) }
+
+        assertTrue(error.message!!.contains("INSTALL_FAILED_USER_RESTRICTED"), error.message)
+        assertTrue(error.message!!.contains("«Instalar vía USB»"), error.message)
+    }
+
+    @Test
     fun `con otra firma y confirmacion desinstala e instala`() {
         tools.installed["com.empresa.app"] = "2026-10-01 09:00:00"
         tools.signatures["com.empresa.app"] = "release"

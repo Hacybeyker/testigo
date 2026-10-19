@@ -13,6 +13,7 @@ import testigo.doctor.CheckStatus
 import testigo.doctor.DoctorSection
 import testigo.maestro.MaestroCli
 import testigo.setup.AndroidSdkInstaller
+import testigo.setup.ClaudeSkill
 import testigo.setup.CommandLineTools
 import testigo.setup.CurlFetcher
 import testigo.setup.DebugKeystoreCreator
@@ -127,7 +128,13 @@ class SetupFlow(
             return if (failing) ExitCode.ENVIRONMENT else ExitCode.OK
         }
 
-        val selected = if (mode == SetupMode.YES) actions else choose(actions, state) ?: return cancelled()
+        val selected = if (mode == SetupMode.YES) actions.filterNot { it.optional } else choose(actions, state) ?: return cancelled()
+        if (selected.isEmpty() && mode == SetupMode.YES) {
+            out("\nNo hace falta instalar ni configurar nada. Opcional, con testigo setup sin --yes:")
+            actions.forEach { out("  · " + summary(it, state)) }
+            out(NEXT_STEP)
+            return if (failing) ExitCode.ENVIRONMENT else ExitCode.OK
+        }
         if (selected.isEmpty()) {
             out("\nNo elegiste nada: no cambié nada.")
             return if (failing) ExitCode.ENVIRONMENT else ExitCode.OK
@@ -171,7 +178,7 @@ class SetupFlow(
         val asker = requireNotNull(asker)
         val names = actions.map { it.name }
         val width = names.maxOf { it.length } + 3
-        val choices = actions.map { Choice(it.name.padEnd(width) + summary(it, state, withName = false), selected = true) }
+        val choices = actions.map { Choice(it.name.padEnd(width) + summary(it, state, withName = false), selected = !it.optional) }
         val picked = asker.many("Qué hago en esta máquina", choices) ?: return null
         return picked.sorted().map { actions[it] }
     }
@@ -192,6 +199,11 @@ class SetupFlow(
                 val profile = action.shell.profile?.let { " y una línea en ${ShellEnv.display(it, s.shellHome)}" }.orEmpty()
                 "escribe ${ShellEnv.display(action.shell.envFile, s.shellHome)}$profile · " +
                     SetupPlan.missing(s, predicted(s, SetupPlan.actions(s))).map { it.label }.distinct().joinToString(", ").ifEmpty { "lo actualiza" }
+            }
+            is SetupAction.InstallSkill -> if (action.update) {
+                "actualiza la skill testigo-flows en ${s.show(action.skill.target)}; la anterior queda en ${s.show(action.backups)}"
+            } else {
+                "copia la skill testigo-flows a ${s.show(action.skill.target)}, para escribir flows con IA (opcional); local"
             }
         }
         return if (withName) "${action.name}: $text" else text
@@ -233,6 +245,12 @@ class SetupFlow(
             is SetupAction.CreateDebugKeystore -> {
                 add("Debug key")
                 add("  · keytool crea ${s.show(action.file)}, igual a la que crea Android Studio")
+            }
+            is SetupAction.InstallSkill -> {
+                add("Claude Code")
+                add("  · copia skills/${ClaudeSkill.NAME} de esta instalación de testigo a ${s.show(action.skill.target)}")
+                if (action.update) add("  · antes mueve la copia actual a ${s.show(action.backups)}, por si la editaste")
+                add("  · no descarga nada; Claude Code la usa desde la próxima sesión")
             }
             is SetupAction.ConfigureTerminal -> {
                 add("Terminal (${action.shell.kind.label})")
@@ -279,6 +297,12 @@ class SetupFlow(
                     null
                 }
                 is SetupAction.ConfigureTerminal -> configureTerminal(state)
+                is SetupAction.InstallSkill -> {
+                    val backup = ClaudeSkill.install(action.skill.source, action.skill.target, action.backups)
+                    out("  ✔ ${state.show(action.skill.target)}")
+                    backup?.let { out("  ✔ la copia anterior quedó en ${state.show(it)}") }
+                    "\nLa skill testigo-flows queda lista en tu próxima sesión de Claude Code: /testigo-flows desde la carpeta de tu suite."
+                }
             }
         } catch (e: TestigoException) {
             failures++

@@ -77,6 +77,47 @@ class RunReportTest {
     )
 
     @Test
+    fun `con repeat el summary dice cuantas veces paso cada flow y cuales son intermitentes`() {
+        val base = result()
+        fun run(name: String, attempt: Int, status: FlowStatus, reason: String? = null) =
+            flow(name, status, reason = reason).copy(attempt = attempt, dir = base.dir.resolve("$name/$attempt"))
+        val result = base.copy(
+            flows = listOf(
+                run("registro", 1, FlowStatus.PASSED),
+                run("login", 1, FlowStatus.FAILED, "[Failed] login (5s) (Element not found: Hola)"),
+                run("registro", 2, FlowStatus.PASSED),
+                run("login", 2, FlowStatus.PASSED),
+            ),
+            repeat = 2,
+        )
+
+        val summary = RunReport.summary(result, context(), tmp)
+        assertTrue("· 2 flows × 2 · 3 de 4 pasaron · 1 intermitente ·" in summary, summary)
+        assertTrue("| registro | ✅ ✅ | 2/2 estable | 52.0 s | — |" in summary, summary)
+        assertTrue("| login | ❌ ✅ | 1/2 intermitente | 52.0 s | — |" in summary, summary)
+        assertTrue("- **login #1**: [Failed] login (5s) (Element not found: Hola)" in summary, summary)
+
+        val metadata = RunReport.metadata(result, context(), tmp)
+        assertEquals(2, metadata["repeat"])
+        assertEquals(listOf("login"), metadata["flaky"])
+        @Suppress("UNCHECKED_CAST")
+        val flows = metadata["flows"] as List<Map<String, Any?>>
+        assertEquals(listOf(1, 1, 2, 2), flows.map { it["attempt"] })
+        assertEquals("login/1", flows[1]["dir"])
+        assertEquals(ExitCode.FLOW_FAILED.code, metadata["exit_code"])
+        assertTrue("<testcase name=\"login #1\"" in RunReport.junit(result), RunReport.junit(result))
+    }
+
+    @Test
+    fun `sin repeat no hay campos de rondas en metadata`() {
+        val metadata = RunReport.metadata(result(), context(), tmp)
+        assertFalse("repeat" in metadata)
+        @Suppress("UNCHECKED_CAST")
+        val flows = metadata["flows"] as List<Map<String, Any?>>
+        assertFalse("attempt" in flows.first())
+    }
+
+    @Test
     fun `un 500 del backend aparece en las alertas del summary`() {
         val summary = RunReport.summary(result(), context(), tmp)
 

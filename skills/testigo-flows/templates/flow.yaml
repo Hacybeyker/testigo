@@ -1,0 +1,22 @@
+# <Qué prueba este flow y por qué, en una línea.>
+appId: <applicationId con sufijo, por ejemplo com.empresa.app.qa>
+name: <feature_caso, en minúsculas y sin tildes: es el nombre de la carpeta de evidencia>
+tags: [<smoke|feature>, <feature>]
+---
+# Estado conocido
+- launchApp:
+    clearState: true
+
+# Esperar la primera pantalla con contenido, no el shimmer
+- extendedWaitUntil:
+    visible: <selector de la pantalla inicial>
+    timeout: 20000
+
+# Pasos del caso (reutiliza subflows para login y navegación comunes)
+- runFlow:
+    file: ../subflows/<subflow>.yaml
+
+- tapOn: <selector>
+
+# Resultado esperado: todo flow termina verificando algo
+- assertVisible: <selector del resultado>
