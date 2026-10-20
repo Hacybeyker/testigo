@@ -59,7 +59,7 @@ En cinco pasos. El detalle de cada uno, con ejemplos, está en la **[guía paso 
 curl -fsSL https://raw.githubusercontent.com/Hacybeyker/testigo/HEAD/install.sh | bash
 ```
 
-Baja la última versión de [Releases](https://github.com/Hacybeyker/testigo/releases), verifica su SHA-256 y la deja en `~/.testigo/cli/<versión>`, con el comando en `~/.local/bin/testigo`. No usa sudo ni toca el perfil de tu terminal: eso lo hace `testigo setup`, en el paso 2. Puedes leer [`install.sh`](install.sh) antes de correrlo.
+Baja la última versión de [Releases](https://github.com/Hacybeyker/testigo/releases), verifica su SHA-256 y la deja en `~/.testigo/cli/<versión>`, con el comando en `~/.local/bin/testigo`. No usa sudo ni toca el perfil de tu terminal: eso lo hace `testigo setup`, en el paso 2. Puedes leer [`install.sh`](install.sh) antes de correrlo. Cada release trae `SHA256SUMS` y la attestation de sus archivos: `gh attestation verify testigo-<versión>.tar.gz -R Hacybeyker/testigo` confirma que salieron de este repositorio y de su workflow de releases.
 
 **Actualizar** es la misma línea: la terminal que configuró `testigo setup` pasa sola a la versión nueva, y la anterior queda para volver. Para una versión en particular, o para desinstalar:
 

@@ -66,7 +66,7 @@ Siguiente: ~/.local/bin/testigo setup
   Revisa Java, Maestro, el Android SDK y el PATH, y te pregunta antes de cambiar algo.
 ```
 
-El instalador baja la última versión de [Releases](https://github.com/Hacybeyker/testigo/releases) por HTTPS y verifica su SHA-256: si no coincide, no instala nada. Deja cada versión en su carpeta, `~/.testigo/cli/<versión>`, con `~/.testigo/cli/current` apuntando a la activa y el comando `testigo` en `~/.local/bin`. No usa sudo, no edita el perfil de tu terminal y no envía nada: el PATH lo configura `testigo setup`, en el paso 3. Necesita `curl` y `tar` (o `unzip`); si falta alguno, dice cómo instalarlo. Si quieres leerlo antes de correrlo, es [`install.sh`](../install.sh).
+El instalador baja la última versión de [Releases](https://github.com/Hacybeyker/testigo/releases) por HTTPS y verifica su SHA-256: si no coincide, no instala nada. Deja cada versión en su carpeta, `~/.testigo/cli/<versión>`, con `~/.testigo/cli/current` apuntando a la activa y el comando `testigo` en `~/.local/bin`. No usa sudo, no edita el perfil de tu terminal y no envía nada: el PATH lo configura `testigo setup`, en el paso 3. Necesita `curl` y `tar` (o `unzip`); si falta alguno, dice cómo instalarlo. Si quieres leerlo antes de correrlo, es [`install.sh`](../install.sh). Cada release trae además `SHA256SUMS` y la attestation de sus archivos, firmada por el workflow que los compiló: con [GitHub CLI](https://cli.github.com), `gh attestation verify testigo-0.3.0.tar.gz -R Hacybeyker/testigo` confirma que el archivo salió de este repositorio.
 
 | Variable | Para qué |
 | --- | --- |
