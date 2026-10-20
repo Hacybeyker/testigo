@@ -1,0 +1,91 @@
+# Compila, corre los tests y prueba install.sh en Linux y macOS (Intel y Apple Silicon) con el archivo recién compilado.
+# Cada action va fijada por el SHA de su commit (el comentario dice su versión): una etiqueta se puede mover, un SHA no.
+# Dependabot (.github/dependabot.yml) propone las actualizaciones.
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build y tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # El gradle-wrapper.jar del repo es uno publicado por Gradle, no uno cambiado.
+      - uses: gradle/actions/wrapper-validation@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+      - name: ./gradlew build
+        run: ./gradlew build
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: distributions
+          path: build/distributions/
+          if-no-files-found: error
+          retention-days: 7
+
+  shell:
+    name: ShellCheck
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: install.sh, el arranque de bin/testigo y los scripts
+        run: |
+          shellcheck --version
+          shellcheck -s sh install.sh scripts/test-install.sh
+          shellcheck -s bash install.sh scripts/test-install.sh
+          # $darwin lo define la plantilla de Gradle en la que se inserta este fragmento.
+          shellcheck -s sh -e SC2154 gradle/start-scripts/java-check.sh
+          shellcheck -S warning scripts/check-env.sh skills/testigo-flows/scripts/maestro-local.sh
+      # El bash 3.2 de macOS toma los bytes de una letra con tilde pegada a $VAR como parte del nombre: van con ${VAR}.
+      - name: Variables pegadas a caracteres no ASCII
+        run: |
+          if grep -nP '\$[A-Za-z_][A-Za-z0-9_]*[^\x00-\x7F]' install.sh gradle/start-scripts/java-check.sh scripts/test-install.sh; then
+            echo "::error::Usa \${VAR} cuando lo que sigue no es ASCII: bash 3.2 (macOS) lo lee como parte del nombre."
+            exit 1
+          fi
+
+  install:
+    name: Instalador · ${{ matrix.os }}
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        # Linux x64 y arm64; macOS en Apple Silicon y en Intel. En macOS, sh es el bash 3.2 del sistema.
+        os: [ubuntu-24.04, ubuntu-24.04-arm, macos-15, macos-15-intel]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: distributions
+          path: dist
+      - name: Instalar y desinstalar
+        run: sh scripts/test-install.sh dist

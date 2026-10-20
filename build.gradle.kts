@@ -11,7 +11,7 @@ plugins {
 }
 
 group = "testigo"
-version = "0.2.0"
+version = "0.3.0-dev"
 
 // Java 17 es el mínimo que ya exigen Maestro y bundletool: no sumamos ningún runtime.
 java {
@@ -160,32 +160,46 @@ distributions {
     }
 }
 
-// Un solo formato para repartir: zip, que se abre igual en macOS, Linux y Windows.
-tasks.named("distTar") { enabled = false }
+// Dos formatos con el mismo contenido: zip, que se abre en cualquier sistema, y .tar.gz, porque tar está en todo macOS y
+// Linux y unzip no siempre (install.sh prefiere el .tar.gz).
+tasks.named<Tar>("distTar") {
+    compression = Compression.GZIP
+    archiveExtension.set("tar.gz")
+}
 
-// testigo-<versión>.zip.sha256 junto al zip, para verificarlo al copiarlo a otra máquina: shasum -a 256 -c <archivo>.
-val distZipSha256 = tasks.register("distZipSha256") {
-    description = "Escribe el SHA-256 del zip de la distribución junto a él."
-    val zip = tasks.named<Zip>("distZip").flatMap { it.archiveFile }
-    val checksum = zip.map { it.asFile.resolveSibling(it.asFile.name + ".sha256") }
-    inputs.file(zip)
-    outputs.file(checksum)
+// Junto a cada archivo, su <archivo>.sha256 (shasum -a 256 -c <archivo>.sha256), y SHA256SUMS con los dos: lo que
+// install.sh y el release verifican. Mismo formato que shasum y sha256sum: `<hash>  <nombre>`.
+val distChecksums = tasks.register("distChecksums") {
+    description = "Escribe el SHA-256 de cada archivo de la distribución y SHA256SUMS."
+    val archives = listOf(
+        tasks.named<Zip>("distZip").flatMap { it.archiveFile },
+        tasks.named<Tar>("distTar").flatMap { it.archiveFile },
+    )
+    val sums = tasks.named<Zip>("distZip").flatMap { it.destinationDirectory.file("SHA256SUMS") }
+    inputs.files(archives)
+    outputs.files(archives.map { archive -> archive.map { it.asFile.resolveSibling(it.asFile.name + ".sha256") } })
+    outputs.file(sums)
     doLast {
-        val file = zip.get().asFile
-        val digest = MessageDigest.getInstance("SHA-256")
-        file.inputStream().use { input ->
-            val buffer = ByteArray(1 shl 16)
-            while (true) {
-                val read = input.read(buffer)
-                if (read < 0) break
-                digest.update(buffer, 0, read)
+        val lines = archives.map { archive ->
+            val file = archive.get().asFile
+            val digest = MessageDigest.getInstance("SHA-256")
+            file.inputStream().use { input ->
+                val buffer = ByteArray(1 shl 16)
+                while (true) {
+                    val read = input.read(buffer)
+                    if (read < 0) break
+                    digest.update(buffer, 0, read)
+                }
             }
+            val line = digest.digest().joinToString("") { "%02x".format(it) } + "  " + file.name + "\n"
+            file.resolveSibling(file.name + ".sha256").writeText(line)
+            line
         }
-        val hex = digest.digest().joinToString("") { "%02x".format(it) }
-        checksum.get().writeText("$hex  ${file.name}\n")
+        sums.get().asFile.writeText(lines.joinToString(""))
     }
 }
-tasks.named("distZip") { finalizedBy(distZipSha256) }
+tasks.named("distZip") { finalizedBy(distChecksums) }
+tasks.named("distTar") { finalizedBy(distChecksums) }
 
 // `./gradlew run --args="run --dry-run"` se ejecuta contra la suite de ejemplo.
 tasks.named<JavaExec>("run") {

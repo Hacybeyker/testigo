@@ -135,7 +135,8 @@ testigo setup --print-env  # muestra las variables, sin cambiar nada: eval "$(te
 | adb, aapt2 | `platform-tools`, `build-tools` | `sdkmanager --sdk_root=<sdk> platform-tools "build-tools;36.0.0"`, solo lo que falta. Antes muestra la licencia del SDK: la aceptas tú. | dentro del SDK |
 | Debug key | existe | La crea con `keytool`, igual que Android Studio. Solo hace falta para un AAB. | `~/.android/debug.keystore` |
 | Terminal | las variables ya están | Escribe el entorno y una línea que lo carga en el perfil (ver abajo). | `~/.testigo/env.sh` y el perfil |
-| Claude Code (opcional) | la skill `testigo-flows` al día | Solo si existe `~/.claude` (o `CLAUDE_CONFIG_DIR`): copia la skill del zip. Instalarla es opcional y no viene marcada; `--yes` no la instala. Si ya hay una copia distinta, la actualiza y deja la anterior en `~/.testigo/backups/`. Un enlace no lo toca. Ver [Flows con IA](FLOWS-CON-IA.md). | `~/.claude/skills/testigo-flows` |
+| En el PATH | el `testigo` de la terminal es este | Avisa si otro va antes, como un zip descomprimido a mano. La configuración de la terminal pone este primero. | — |
+| Claude Code (opcional) | la skill `testigo-flows` al día | Solo si existe `~/.claude` (o `CLAUDE_CONFIG_DIR`): copia la skill de esta instalación de testigo. Instalarla es opcional y no viene marcada; `--yes` no la instala. Si ya hay una copia distinta, la actualiza y deja la anterior en `~/.testigo/backups/`. Un enlace no lo toca. Ver [Flows con IA](FLOWS-CON-IA.md). | `~/.claude/skills/testigo-flows` |
 
 **Java antes de la JVM.** `bin/testigo` busca un Java 17 o más antes de arrancar, en este orden: `JAVA_HOME`, el `java` del PATH, `~/.testigo/jdk/current`, `/usr/libexec/java_home -v 17+` en macOS, el `jbr` de Android Studio (en `/Applications` o `~/Applications`, también las versiones Preview; en Linux, `/opt/android-studio`, `~/android-studio`, `/usr/local/android-studio` o el snap) y `/usr/lib/jvm/*`. Si `JAVA_HOME` apunta a uno más viejo, avisa y usa el que encontró. Sin ninguno, cualquier comando termina con código 2 y pide `testigo setup`; `testigo setup`, en una terminal, ofrece descargar Temurin 21.0.12.1 (SHA-256 fijado en el script, unos 200 MB) y solo con un sí.
 
@@ -160,7 +161,7 @@ Lo que se descarga queda primero en una carpeta temporal junto a su destino; si 
 | fish | ninguno: el entorno va en `~/.config/fish/conf.d/testigo.fish`, que fish carga solo |
 | otra | `~/.profile` |
 
-`env.sh` define solo lo que falta en tu terminal: `JAVA_HOME` si `bin/testigo` tuvo que buscar Java, `ANDROID_HOME` si no estaba, las cuatro variables `MAESTRO_*` de la [política local-only](#política-local-only), y en el PATH las carpetas de `maestro`, `adb` y `testigo` que falten, sin repetirlas. Al volver a ejecutarse, conserva lo que ya manejaba y actualiza las rutas. La primera vez que cambia el perfil guarda una copia en `<perfil>.testigo-backup`. Para quitarlo todo, borra el bloque del perfil y `~/.testigo/env.sh`.
+`env.sh` define solo lo que falta en tu terminal: `JAVA_HOME` si `bin/testigo` tuvo que buscar Java, `ANDROID_HOME` si no estaba, las cuatro variables `MAESTRO_*` de la [política local-only](#política-local-only), y en el PATH las carpetas de `maestro`, `adb` y `testigo` que falten, sin repetirlas. Para `testigo`, si es la versión activa de `install.sh`, la carpeta es `~/.testigo/cli/current/bin`, que sigue a cada actualización sin otro `testigo setup`; si no, la `bin/` de esa instalación. Al volver a ejecutarse, conserva lo que ya manejaba y actualiza las rutas. La primera vez que cambia el perfil guarda una copia en `<perfil>.testigo-backup`. Para quitarlo todo, borra el bloque del perfil y `~/.testigo/env.sh`.
 
 **Sin poder editar el perfil.** Si el perfil no se puede escribir, `testigo setup` lo dice y deja `~/.testigo/env.sh`: se carga con `. ~/.testigo/env.sh` en cada terminal o desde otro archivo de inicio. `testigo` también funciona sin nada de eso: encuentra Java, Maestro y el SDK en sus carpetas por defecto aunque no estén en el PATH.
 
@@ -203,7 +204,8 @@ Qué revisa, y cuándo es un problema (✖) o un aviso (!):
 
 | Sección | Revisión | Problema si… | Aviso si… |
 | --- | --- | --- | --- |
-| Herramientas | Java | es menor a 17, `JAVA_HOME` no tiene `bin/java` o no hay Java | no se pudo leer la versión |
+| Herramientas | testigo | — | —: solo dice la versión y cómo se instaló (con `install.sh`, a mano o desde el código) |
+| | Java | es menor a 17, `JAVA_HOME` no tiene `bin/java` o no hay Java | no se pudo leer la versión |
 | | Maestro | no está instalado | no se pudo leer la versión |
 | | Fijada | — | `testigo.yaml` no fija `maestro.version`, o la instalada es otra |
 | | adb | no está (ni en `ANDROID_HOME` ni en el PATH) | — |
@@ -226,13 +228,14 @@ Lo que depende de algo que falló queda sin revisar (`–`): sin dispositivo no 
 testigo doctor · revisa la máquina, el dispositivo y la app sin instalar ni cambiar nada
 
 Herramientas
+  ✔ testigo     0.3.0 · instalado con install.sh · ~/.testigo/cli/0.3.0
   ✔ Java        21.0.8 · JAVA_HOME · /Applications/Android Studio.app/Contents/jbr/Contents/Home
   ✔ Maestro     2.11.0 · ~/.maestro/bin/maestro
   ! Fijada      testigo.yaml fija 2.10.0, pero tienes 2.11.0
                 → Instala esa versión con testigo setup desde esta carpeta o, si el equipo ya cambió de versión, actualiza maestro.version.
   ✔ adb         36.0.0 · ~/Library/Android/sdk/platform-tools/adb
   ✔ aapt2       build-tools 36.1.0 · ~/Library/Android/sdk/build-tools/36.1.0/aapt2
-  ✔ bundletool  1.18.3 · ~/herramientas/testigo-0.2.0/tools/bundletool-all-1.18.3.jar
+  ✔ bundletool  1.18.3 · ~/.testigo/cli/0.3.0/tools/bundletool-all-1.18.3.jar
 
 Dispositivo
   ✔ Conectado   8a7b6c5d · 2201117TG · Android 13 (API 33)
@@ -458,7 +461,7 @@ Antes de tocar el dispositivo o Maestro, `testigo run` revisa cada flow, sus sub
 - credenciales escritas en el YAML: valores fijos en `env` para claves como `PASSWORD` o `TOKEN`, texto fijo en un campo de contraseña, o tokens JWT;
 - lo que no se puede revisar: una ruta dinámica, un archivo que no existe o un YAML inválido.
 
-El único comando que usa internet es [`testigo setup`](#testigo-setup), y solo para descargar herramientas de sus sitios oficiales después de tu confirmación. No envía nada de tus apps, tus flows ni tu evidencia. `testigo init` y el resto no se conectan a nada.
+Solo usan internet `install.sh`, para bajar `testigo` de sus releases en GitHub, y [`testigo setup`](#testigo-setup), para descargar herramientas de sus sitios oficiales después de tu confirmación. Ninguno envía nada de tus apps, tus flows ni tu evidencia. `testigo init` y el resto no se conectan a nada.
 
 Cada proceso de Maestro se lanza con `MAESTRO_CLI_NO_ANALYTICS=1`, `MAESTRO_DISABLE_UPDATE_CHECK=true`, `MAESTRO_API_URL=http://127.0.0.1:9` y `MAESTRO_CLI_ANALYSIS_NOTIFICATION_DISABLED=true`, sin `MAESTRO_CLI_AI_*` ni `MAESTRO_CLOUD_API_KEY`. Solo se ejecutan `maestro test` y `maestro --version`.
 
@@ -475,17 +478,31 @@ Cada proceso de Maestro se lanza con `MAESTRO_CLI_NO_ANALYTICS=1`, `MAESTRO_DISA
 | Dispositivo o emulador | Donde corren los flows | Un teléfono con *Depuración USB* o un emulador con imagen Google APIs. |
 | La app | Lo que se prueba | Un APK o AAB de cualquier build type, de preferencia debuggable; para la red, con Chucker. Ver [Requisitos de la app](../README.md#requisitos-de-la-app). |
 
-**Desde el zip.** El zip se genera con `./gradlew build` (ver [Desarrollo](#desarrollo)) y lleva `bin/`, `lib/`, `tools/` (bundletool), el README, el `CHANGELOG.md`, `LICENSE` y `NOTICE`, `docs/` con esta guía, la [guía paso a paso](GUIA.md) y la de [flows con IA](FLOWS-CON-IA.md), `skills/` con la skill de Claude Code para escribir flows (`testigo setup` ofrece copiarla), `THIRD_PARTY_NOTICES.md` y `licenses/`:
+**Con `install.sh`.** En macOS y Linux, una línea instala la última versión publicada:
 
 ```bash
-shasum -a 256 -c testigo-0.2.0.zip.sha256              # verifica que el zip llegó entero
-unzip testigo-0.2.0.zip -d ~/herramientas
-~/herramientas/testigo-0.2.0/bin/testigo setup         # prepara la máquina y deja testigo en el PATH
+curl -fsSL https://raw.githubusercontent.com/Hacybeyker/testigo/HEAD/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Hacybeyker/testigo/HEAD/install.sh | TESTIGO_VERSION=0.2.0 bash   # una versión en particular
+~/.local/bin/testigo setup                                  # prepara la máquina y deja testigo en el PATH
 ```
 
-En Windows (todavía sin probar) se descomprime igual, se agrega `testigo-0.2.0\bin` al PATH y el comando es `testigo` (`bin\testigo.bat`).
+Baja de los releases de GitHub el `.tar.gz` (o el `.zip`, si falta `tar`) y su `.sha256`, por HTTPS, y verifica el SHA-256 antes de instalar. Deja la versión en `~/.testigo/cli/<versión>`, apunta `~/.testigo/cli/current` a ella y crea el enlace `~/.local/bin/testigo`; si ya hay un `testigo` ahí que no es suyo, no lo pisa. No usa sudo ni edita el perfil de la terminal. Variables: `TESTIGO_VERSION`, `TESTIGO_ARCHIVE` (un archivo local con su `.sha256` al lado, sin descargar), `TESTIGO_HOME` (en lugar de `~/.testigo`) y `TESTIGO_BIN_DIR` (en lugar de `~/.local/bin`). `sh install.sh --help` las explica. Termina con código 1 si no puede descargar, si el SHA-256 no coincide o si la versión no existe, y con 2 si falta una herramienta (`curl`, `tar` o `unzip`), si una variable tiene un valor inválido o si el sistema no es macOS ni Linux.
 
-**Actualizar.** Se borra la carpeta del CLI y se descomprime el zip nuevo en el mismo lugar (`command -v testigo` dice dónde está). El estado del runner, el Java descargado y la configuración de la terminal viven aparte, en `~/.testigo/`, y no cambian. Si la carpeta nueva queda en otro lugar o con otro nombre (otra versión), `bin/testigo setup` desde ella actualiza el PATH. Detalle en la [guía](GUIA.md#actualizar-el-cli).
+Cada versión lleva `bin/`, `lib/`, `tools/` (bundletool), el README, el `CHANGELOG.md`, `LICENSE` y `NOTICE`, `docs/` con esta guía, la [guía paso a paso](GUIA.md) y la de [flows con IA](FLOWS-CON-IA.md), `skills/` con la skill de Claude Code para escribir flows (`testigo setup` ofrece copiarla), `THIRD_PARTY_NOTICES.md` y `licenses/`. Los releases traen el mismo contenido en `.zip` y en `.tar.gz`, el `.sha256` de cada uno y `SHA256SUMS`.
+
+**A mano.** Se descomprime el archivo donde se quiera y se ejecuta su `bin/testigo setup`:
+
+```bash
+shasum -a 256 -c testigo-0.3.0.zip.sha256              # verifica que el zip llegó entero
+unzip testigo-0.3.0.zip -d ~/herramientas
+~/herramientas/testigo-0.3.0/bin/testigo setup         # prepara la máquina y deja testigo en el PATH
+```
+
+En Windows (todavía sin probar) se descomprime igual, se agrega `testigo-0.3.0\bin` al PATH y el comando es `testigo` (`bin\testigo.bat`).
+
+**Actualizar.** Con `install.sh`, la misma línea: deja la versión nueva al lado de la anterior, mueve `cli/current` y borra las más viejas, así que quedan la activa y la anterior. La terminal ya apunta a `cli/current`, y si `testigo` es el de esta instalación y `~/.testigo/env.sh` ya usa `cli/current`, el instalador termina con «Listo: tu terminal ya usa esta versión». Si otro `testigo` va antes en el PATH (un zip a mano, o la carpeta de una versión que puso un setup anterior a la 0.3.0), lo avisa y pide `testigo setup` con la ruta completa. Para volver a la anterior, `TESTIGO_VERSION=<versión>`. Una instalación a mano se actualiza borrando su carpeta y descomprimiendo el archivo nuevo en el mismo lugar; con otra carpeta, su `bin/testigo setup` actualiza el PATH. El estado del runner, el Java descargado y la configuración de la terminal viven aparte, en `~/.testigo/`, y no cambian. Detalle en la [guía](GUIA.md#actualizar-el-cli).
+
+**Desinstalar.** `curl -fsSL https://raw.githubusercontent.com/Hacybeyker/testigo/HEAD/install.sh | bash -s -- --uninstall` (o `sh install.sh --uninstall`) quita `~/.testigo/cli` y el enlace, si es suyo. No toca Java, Maestro, el Android SDK, las suites ni `~/.testigo/env.sh`.
 
 [`testigo doctor`](#testigo-doctor) revisa todo lo de la tabla, el dispositivo, `run-as` y la base de Chucker.
 
@@ -494,8 +511,9 @@ En Windows (todavía sin probar) se descomprime igual, se agrega `testigo-0.2.0\
 ### Compilar y probar
 
 ```bash
-./gradlew build          # compila, corre los tests y deja build/distributions/testigo-0.2.0.zip y su .sha256
-./gradlew installDist    # deja el CLI en build/install/testigo/bin/testigo, sin zip
+./gradlew build          # compila, corre los tests y deja en build/distributions/ el .zip y el .tar.gz, sus .sha256 y SHA256SUMS
+./gradlew installDist    # deja el CLI en build/install/testigo/bin/testigo, sin archivos
+sh scripts/test-install.sh build/distributions   # prueba install.sh con ese build en una carpeta temporal
 
 # Atajo contra la suite de ejemplo, sin instalar:
 ./gradlew run --args="run --dry-run --profile evidencia --tags smoke"
@@ -503,7 +521,9 @@ En Windows (todavía sin probar) se descomprime igual, se agrega `testigo-0.2.0\
 
 Antes de compilar, `./scripts/check-env.sh` revisa que la máquina tenga Java, Maestro y el Android SDK.
 
-**Versión.** Está en un solo lugar: `version` de `build.gradle.kts`. La tarea `generateBuildInfo` la escribe en `build/generated/` como una constante que leen `testigo --version`, `metadata.json` y el HAR, y el zip toma su nombre. Para lanzar otra, se cambia ahí y en el `CHANGELOG.md`.
+**CI.** En cada push a `master` y en cada pull request, [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) compila y corre los tests, revisa los scripts con ShellCheck (también que ninguna `$VAR` quede pegada a una letra no ASCII, que el bash 3.2 de macOS lee mal) y corre `scripts/test-install.sh` con el build en Linux x64 y arm64 y en macOS Apple Silicon e Intel. Cada action está fijada por el SHA de su commit; Dependabot propone las actualizaciones una vez por semana.
+
+**Versión.** Está en un solo lugar: `version` de `build.gradle.kts`. La tarea `generateBuildInfo` la escribe en `build/generated/` como una constante que leen `testigo --version`, `metadata.json` y el HAR, y los archivos de la distribución toman su nombre. Entre un release y el siguiente lleva `-dev` (por ejemplo `0.3.0-dev`); para lanzar una versión se le quita el sufijo y su sección `Sin publicar` del `CHANGELOG.md` pasa a llevar el número y la fecha.
 
 En IntelliJ IDEA: **File > Open** sobre esta carpeta, un **Gradle JVM** 17 o superior en **Settings > Build Tools > Gradle**, y la configuración incluida **testigo run --dry-run (demo)**. Hasta el primer `./gradlew build`, el IDE marca `GENERATED_VERSION` como desconocida: la genera ese build.
 
@@ -530,14 +550,17 @@ src/main/kotlin/testigo/
 ├── artifact/   APK o AAB: lectura del manifest, bundletool, caché e instalación
 └── util/
 gradle/start-scripts/  búsqueda de Java ≥ 17 (y descarga con testigo setup) que se agrega a bin/testigo; revisión en bin/testigo.bat
-docs/GUIA.md           la guía paso a paso; va en el zip
-docs/USO.md            esta guía; va en el zip
-docs/FLOWS-CON-IA.md   cómo usar la skill de Claude Code; va en el zip
-skills/testigo-flows/  la skill de Claude Code para escribir flows; va en el zip
-CHANGELOG.md           qué trae cada versión; va en el zip
-LICENSE y NOTICE       la licencia del proyecto (Apache 2.0); van en el zip
-THIRD_PARTY_NOTICES.md licencias de las dependencias; va en el zip con licenses/
+docs/GUIA.md           la guía paso a paso; va en cada versión
+docs/USO.md            esta guía; va en cada versión
+docs/FLOWS-CON-IA.md   cómo usar la skill de Claude Code; va en cada versión
+skills/testigo-flows/  la skill de Claude Code para escribir flows; va en cada versión
+CHANGELOG.md           qué trae cada versión; va en cada versión
+LICENSE y NOTICE       la licencia del proyecto (Apache 2.0); van en cada versión
+THIRD_PARTY_NOTICES.md licencias de las dependencias; va en cada versión con licenses/
 scripts/check-env.sh   verifica que la máquina tenga todo lo necesario
+scripts/test-install.sh prueba install.sh con un build o un release (lo usa la CI)
+install.sh             el instalador de una línea: curl … | bash
+.github/               la CI (build, ShellCheck e install.sh en Linux y macOS) y Dependabot
 examples/demo-suite/   suite de ejemplo para probar el CLI
 ```
 

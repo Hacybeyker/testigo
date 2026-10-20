@@ -2,6 +2,22 @@
 
 Los cambios importantes de `testigo`, de la versión más nueva a la más vieja. El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y las versiones, [Semantic Versioning](https://semver.org/lang/es/).
 
+## Sin publicar
+
+Para pasar de un zip instalado a mano (como `~/herramientas/testigo-0.2.0`): ejecuta la línea de `install.sh`, luego `~/.local/bin/testigo setup` y borra la carpeta vieja. El instalador y `testigo setup` avisan mientras la otra siga primero en el PATH. Los comandos, la evidencia, `metadata.json` y los códigos de salida son los de 0.2.0.
+
+### Agregado
+
+- `install.sh`, para instalar y actualizar con una línea en macOS y Linux: `curl -fsSL https://raw.githubusercontent.com/Hacybeyker/testigo/HEAD/install.sh | bash`. Baja el release de GitHub, verifica su SHA-256 y lo deja en `~/.testigo/cli/<versión>`, con `cli/current` apuntando a la activa y el comando en `~/.local/bin/testigo`. Conserva la versión anterior para volver con `TESTIGO_VERSION`, instala un archivo local con `TESTIGO_ARCHIVE` y se quita con `--uninstall`. No usa sudo ni edita el perfil de la terminal.
+- Cada versión se publica también en `.tar.gz`, porque `tar` viene en todo macOS y Linux y `unzip` no siempre, con el `.sha256` de cada archivo y `SHA256SUMS`.
+- `testigo doctor` empieza por la versión de testigo y cómo está instalado: con `install.sh`, a mano o desde el código.
+- `testigo setup` avisa si otro `testigo` va antes en el PATH, como un zip instalado a mano, y dice cómo corregirlo.
+
+### Cambiado
+
+- Con testigo instalado por `install.sh`, `testigo setup` pone `~/.testigo/cli/current/bin` en el PATH, no la carpeta de la versión: después de actualizar, una terminal nueva ya usa la versión nueva sin otro `testigo setup`.
+- Si falta Java, el mensaje pide `testigo setup` con el comando que funciona en esa terminal: `testigo` si está en el PATH y, si no, la ruta de `cli/current` o la de esa instalación.
+
 ## 0.2.0 - 2026-10-19
 
 Para actualizar desde 0.1.0: descomprime el zip nuevo al lado del anterior, ejecuta una vez `~/herramientas/testigo-0.2.0/bin/testigo setup` y borra la carpeta de 0.1.0. Sin `--repeat`, la evidencia, `metadata.json`, los flags y los códigos de salida son los de 0.1.0.

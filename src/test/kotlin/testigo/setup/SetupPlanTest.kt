@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
+import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.io.path.createDirectories
 import kotlin.io.path.writeText
@@ -38,14 +39,19 @@ class SetupPlanTest {
         "TESTIGO_JAVA_FOUND" to jdk.toString(),
     ) + extra
 
-    private fun inspect(env: Map<String, String>, wanted: Pair<String, Path>? = null, maestroVersion: String? = "2.11.0") = Machine.inspect(
+    private fun inspect(
+        env: Map<String, String>,
+        wanted: Pair<String, Path>? = null,
+        maestroVersion: String? = "2.11.0",
+        appHome: Path = app,
+    ) = Machine.inspect(
         env = env,
         osName = "Mac OS X",
         arch = "aarch64",
         home = home,
         javaVersion = "21.0.12.1",
         javaHomeProperty = jdk,
-        appHome = app,
+        appHome = appHome,
         wanted = wanted,
         maestroVersion = { maestroVersion },
     )
@@ -57,11 +63,20 @@ class SetupPlanTest {
         home.resolve(".android").createDirectories().resolve("debug.keystore").writeText("key")
     }
 
-    /** Lo que deja la terminal después de cargar ~/.testigo/env.sh. */
-    private fun configured(): Map<String, String> = clean() - "TESTIGO_JAVA_FOUND" + MaestroEnvironment.REQUIRED + mapOf(
+    /** Lo que deja la terminal después de cargar ~/.testigo/env.sh. [bin] es la carpeta de testigo que puso en el PATH. */
+    private fun configured(bin: Path = app.resolve("bin")): Map<String, String> = clean() - "TESTIGO_JAVA_FOUND" + MaestroEnvironment.REQUIRED + mapOf(
         "ANDROID_HOME" to sdk.toString(),
-        "PATH" to listOf(app.resolve("bin"), sdk.resolve("platform-tools"), home.resolve(".maestro/bin")).joinToString(":") + ":/usr/bin:/bin",
+        "PATH" to listOf(bin, sdk.resolve("platform-tools"), home.resolve(".maestro/bin")).joinToString(":") + ":/usr/bin:/bin",
     )
+
+    /** Lo que deja install.sh: la versión en ~/.testigo/cli/<versión> y cli/current apuntando a ella. */
+    private fun installScript(version: String): Path {
+        val dir = executable(home.resolve(".testigo/cli/$version/bin/testigo")).parent.parent
+        val current = home.resolve(".testigo/cli/current")
+        Files.deleteIfExists(current)
+        Files.createSymbolicLink(current, Path.of(version))
+        return dir
+    }
 
     private fun List<Check>.of(name: String) = first { it.name == name }
 
@@ -187,6 +202,61 @@ class SetupPlanTest {
         assertFalse(update.optional, "actualizar una copia que ya está no es opcional")
         assertEquals(home.resolve(".testigo/backups"), update.backups)
         assertEquals(CheckStatus.WARN, SetupPlan.checks(outdated).of("Claude Code").status)
+    }
+
+    @Test
+    fun `instalado con install sh, el PATH lleva cli current y una version nueva no pide otro setup`() {
+        installEverything()
+        val current = home.resolve(".testigo/cli/current")
+        val first = inspect(clean(), appHome = installScript("0.3.0"))
+        assertEquals(current.resolve("bin"), first.pathBin)
+
+        val env = SetupPlan.rendered(first, SetupPlan.envEntries(first))
+        assertTrue("/.testigo/cli/current/bin" in env && "0.3.0" !in env, env)
+        home.resolve(".testigo/env.sh").writeText(env)
+        home.resolve(".zshrc").writeText(ShellEnv.block(home.resolve(".testigo/env.sh"), home) + "\n")
+
+        // install.sh deja la 0.4.0 y mueve cli/current: una terminal nueva ya la usa, sin otro testigo setup.
+        val updated = inspect(configured(bin = current.resolve("bin")), appHome = installScript("0.4.0"))
+        assertEquals(emptyList<SetupAction>(), SetupPlan.actions(updated))
+        assertTrue(SetupPlan.checks(updated).all { it.status == CheckStatus.OK }, SetupPlan.checks(updated).toString())
+    }
+
+    @Test
+    fun `una version de install sh que no es la activa, o una instalacion a mano, ponen su propia carpeta`() {
+        val old = installScript("0.2.0")
+        installScript("0.3.0")
+        executable(app.resolve("bin/testigo"))
+        val state = home.resolve(".testigo")
+
+        assertEquals(InstallKind.SCRIPT_INACTIVE, Machine.installKind(old, state))
+        assertEquals(old.resolve("bin"), inspect(clean(), appHome = old).pathBin)
+        assertEquals(InstallKind.MANUAL, Machine.installKind(app, state))
+        assertEquals(app.resolve("bin"), inspect(clean()).pathBin)
+        assertEquals("0.3.0", Machine.activeVersion(state))
+    }
+
+    @Test
+    fun `avisa si otro testigo va antes en el PATH, pero no por un enlace a esta instalacion`() {
+        installEverything()
+        val mine = executable(app.resolve("bin/testigo"))
+        val other = executable(home.resolve("herramientas/testigo-0.0.9/bin/testigo"))
+
+        val shadowed = inspect(clean() + ("PATH" to "${other.parent}:/usr/bin:/bin"))
+        val check = SetupPlan.checks(shadowed).of("En el PATH")
+        assertEquals(CheckStatus.WARN, check.status)
+        assertEquals("esta terminal ejecuta primero ~/herramientas/testigo-0.0.9/bin/testigo", check.detail)
+        assertTrue(check.fix.orEmpty().startsWith("La configuración de la terminal de testigo setup"), check.fix)
+        assertTrue(SetupPlan.actions(shadowed).any { it is SetupAction.ConfigureTerminal })
+
+        // Esta instalación también está en el PATH, pero después y sin que la maneje testigo: setup no la mueve.
+        val both = inspect(clean() + ("PATH" to "${other.parent}:${mine.parent}:/usr/bin:/bin"))
+        assertEquals("Quita esa carpeta del PATH de tu perfil, o borra esa instalación.", SetupPlan.checks(both).of("En el PATH").fix)
+
+        val link = home.resolve(".local/bin").createDirectories().resolve("testigo")
+        Files.createSymbolicLink(link, mine)
+        val linked = inspect(clean() + ("PATH" to "${link.parent}:${other.parent}:/usr/bin:/bin"))
+        assertTrue(SetupPlan.checks(linked).none { it.name == "En el PATH" }, "un enlace a esta instalación es esta instalación")
     }
 
     @Test

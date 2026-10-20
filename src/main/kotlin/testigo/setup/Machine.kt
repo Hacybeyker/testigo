@@ -8,6 +8,7 @@ import testigo.maestro.MaestroCli
 import testigo.policy.MaestroEnvironment
 import testigo.util.tilde
 import java.nio.file.Path
+import java.nio.file.Files
 import kotlin.io.path.isDirectory
 import kotlin.io.path.isExecutable
 import kotlin.io.path.isRegularFile
@@ -16,6 +17,12 @@ import kotlin.io.path.readText
 
 /** De dónde sacó testigo el Java con el que corre. [FOUND]: lo buscó `bin/testigo` porque la terminal no tenía uno 17+. */
 enum class JavaOrigin { JAVA_HOME, PATH, FOUND }
+
+/**
+ * Cómo se instaló testigo: con install.sh y es la versión activa ([SCRIPT]) o una anterior que conserva ([SCRIPT_INACTIVE]),
+ * descomprimiendo el zip a mano ([MANUAL]), o corre desde el código, sin instalar ([SOURCE]).
+ */
+enum class InstallKind { SCRIPT, SCRIPT_INACTIVE, MANUAL, SOURCE }
 
 private val SDK_PARTS = listOf("platform-tools", "build-tools", "cmdline-tools", "platforms", "emulator")
 
@@ -28,7 +35,7 @@ data class MachineState(
     val shellHome: Path,
     /** `~/.testigo` (o `TESTIGO_HOME`). */
     val state: Path,
-    /** La carpeta de esta instalación de testigo (la que tiene `bin/testigo`). */
+    /** La carpeta de esta instalación de testigo (la que tiene `bin/testigo`), siempre la ruta física, con su versión. */
     val appHome: Path?,
     val javaVersion: String,
     val javaHome: Path,
@@ -55,6 +62,8 @@ data class MachineState(
     val cmdlineTools: Download?,
     /** La skill de Claude Code, si esta instalación la trae y Claude Code está en la máquina. */
     val skill: ClaudeSkill? = null,
+    /** La carpeta `bin` que va al PATH: ver [Machine.pathBin]. */
+    val pathBin: Path? = appHome?.resolve("bin"),
 ) {
     /** Un SDK de verdad, no solo la carpeta: tiene alguna de sus herramientas. */
     val sdkExists: Boolean get() = SDK_PARTS.any { sdkRoot.resolve(it).isDirectory() }
@@ -89,7 +98,7 @@ object Machine {
     ): MachineState {
         val windows = osName.startsWith("Windows", ignoreCase = true)
         val shellHome = env["HOME"]?.takeIf { it.isNotBlank() }?.let { Path.of(it) } ?: home
-        val state = env["TESTIGO_HOME"]?.takeIf { it.isNotBlank() }?.let { Path.of(it) } ?: home.resolve(".testigo")
+        val state = state(env, home)
 
         val origin = when {
             !env["TESTIGO_JAVA_FOUND"].isNullOrBlank() -> JavaOrigin.FOUND
@@ -138,8 +147,61 @@ object Machine {
             profileText = shell.profile?.readOrNull(),
             cmdlineTools = CommandLineTools.download(osName, arch),
             skill = ClaudeSkill.inspect(env, home, appHome),
+            pathBin = pathBin(appHome, state),
         )
     }
+
+    /** `~/.testigo`, o `TESTIGO_HOME`: el JDK, el entorno de la terminal y las versiones que instala install.sh. */
+    fun state(env: Map<String, String>, home: Path): Path =
+        env["TESTIGO_HOME"]?.takeIf { it.isNotBlank() }?.let { Path.of(it) } ?: home.resolve(".testigo")
+
+    /**
+     * La carpeta `bin` que se agrega al PATH. Si esta es la versión activa de install.sh, es `cli/current/bin`: así una
+     * versión nueva no deja la terminal en la anterior ni pide otro `testigo setup`. Si no, la de esta instalación.
+     */
+    fun pathBin(appHome: Path?, state: Path): Path? {
+        appHome ?: return null
+        return if (installKind(appHome, state) == InstallKind.SCRIPT) state.resolve(INSTALLER_DIR).resolve(CURRENT).resolve("bin") else appHome.resolve("bin")
+    }
+
+    /**
+     * Cómo llegó a la máquina la instalación [appHome]. install.sh deja cada versión en `<estado>/cli/<versión>` y
+     * `cli/current` apunta a la activa. [appHome] es la ruta física: `bin/testigo` la resuelve con `cd -P`.
+     */
+    fun installKind(appHome: Path?, state: Path): InstallKind {
+        appHome ?: return InstallKind.SOURCE
+        val cli = state.resolve(INSTALLER_DIR)
+        val current = cli.resolve(CURRENT)
+        return runCatching {
+            val real = appHome.toRealPath()
+            when {
+                Files.isSymbolicLink(current) && current.toRealPath() == real -> InstallKind.SCRIPT
+                real.parent == cli.toRealPath() -> InstallKind.SCRIPT_INACTIVE
+                else -> InstallKind.MANUAL
+            }
+        }.getOrDefault(InstallKind.MANUAL)
+    }
+
+    /** La versión a la que apunta `cli/current`, o null si install.sh no instaló ninguna. */
+    fun activeVersion(state: Path): String? = runCatching {
+        state.resolve(INSTALLER_DIR).resolve(CURRENT).toRealPath().name
+    }.getOrNull()
+
+    /**
+     * El primer `testigo` del PATH de esta terminal, si no es esta instalación: el que se ejecuta al escribir `testigo`.
+     * Un enlace a esta instalación, como `~/.local/bin/testigo`, cuenta como propio.
+     */
+    fun foreignTestigo(s: MachineState): Path? {
+        val home = s.appHome ?: return null
+        val name = if (s.windows) "testigo.bat" else "testigo"
+        val first = s.pathDirs.map { it.resolve(name) }.firstOrNull { it.isRegularFile() && it.isExecutable() } ?: return null
+        val mine = runCatching { first.toRealPath() == home.resolve("bin").resolve(name).toRealPath() }.getOrDefault(false)
+        return first.takeIf { !mine }
+    }
+
+    /** Donde install.sh deja las versiones, dentro de la carpeta de estado, y el enlace a la activa. */
+    const val INSTALLER_DIR = "cli"
+    const val CURRENT = "current"
 
     /** `bin/testigo` exporta `TESTIGO_APP_HOME`; si no (desde el IDE), se deduce de dónde está el jar del runner. */
     fun appHome(env: Map<String, String>): Path? {
@@ -240,7 +302,7 @@ object SetupPlan {
         if (sdkInstalled && ((!s.commandOnPath(adb) && !s.onPath(platformTools)) || "PATH:${ShellEnv.TAG_ADB}" in managed)) {
             entries += EnvEntry.PathDir(platformTools, ShellEnv.TAG_ADB, "adb en el PATH")
         }
-        s.appHome?.resolve("bin")?.let { bin ->
+        s.pathBin?.let { bin ->
             if (!s.onPath(bin) || "PATH:${ShellEnv.TAG_TESTIGO}" in managed) entries += EnvEntry.PathDir(bin, ShellEnv.TAG_TESTIGO, "testigo en el PATH")
         }
         return entries
@@ -256,7 +318,7 @@ object SetupPlan {
         MaestroEnvironment.REQUIRED.forEach { (name, value) -> add(EnvEntry.Variable(name, value, "MAESTRO_*")) }
         s.maestro?.parent?.let { add(EnvEntry.PathDir(it, ShellEnv.TAG_MAESTRO, "maestro en el PATH")) }
         s.adb?.parent?.let { add(EnvEntry.PathDir(it, ShellEnv.TAG_ADB, "adb en el PATH")) }
-        s.appHome?.let { add(EnvEntry.PathDir(it.resolve("bin"), ShellEnv.TAG_TESTIGO, "testigo en el PATH")) }
+        s.pathBin?.let { add(EnvEntry.PathDir(it, ShellEnv.TAG_TESTIGO, "testigo en el PATH")) }
     }
 
     /**
@@ -286,7 +348,7 @@ object SetupPlan {
     // --- Lo que se muestra ----------------------------------------------------------------------------------
 
     fun checks(s: MachineState): List<Check> =
-        listOf(java(s), maestro(s), sdk(s), adb(s), aapt2(s), debugKey(s), terminal(s)) + listOfNotNull(skill(s))
+        listOf(java(s), maestro(s), sdk(s), adb(s), aapt2(s), debugKey(s), terminal(s)) + listOfNotNull(shadowed(s), skill(s))
 
     private fun java(s: MachineState): Check {
         val where = "${s.javaVersion} · ${s.show(s.javaHome)}"
@@ -354,13 +416,37 @@ object SetupPlan {
         }
     }
 
-    private fun terminal(s: MachineState): Check {
+    /** El entorno que va a quedar si se hace lo pendiente. */
+    private fun plannedEntries(s: MachineState): List<EnvEntry> {
         val actions = actions(s)
-        val entries = envEntries(
+        return envEntries(
             s,
             maestroInstalled = s.maestroManaged || actions.any { it is SetupAction.InstallMaestro },
             sdkInstalled = s.sdkExists || actions.any { it is SetupAction.InstallAndroidSdk },
         )
+    }
+
+    /**
+     * Otro `testigo` va antes en el PATH (una instalación a mano, por ejemplo): la terminal ejecuta ese aunque este esté
+     * bien instalado. Si la terminal todavía no está configurada, la configuración de `testigo setup` lo corrige, porque
+     * pone su carpeta al principio del PATH.
+     */
+    private fun shadowed(s: MachineState): Check? {
+        if (s.windows) return null
+        val other = Machine.foreignTestigo(s) ?: return null
+        val entries = plannedEntries(s)
+        val writesFirst = entries.any { it is EnvEntry.PathDir && it.tag == ShellEnv.TAG_TESTIGO }
+        val fix = when {
+            writesFirst && !terminalUpToDate(s, entries) ->
+                "La configuración de la terminal de testigo setup pone esta instalación primero. Después puedes borrar la otra."
+            writesFirst -> "Abre una terminal nueva. Si sigue, otra línea de tu perfil pone esa carpeta antes: quítala, o borra esa instalación."
+            else -> "Quita esa carpeta del PATH de tu perfil, o borra esa instalación."
+        }
+        return Check("En el PATH", CheckStatus.WARN, "esta terminal ejecuta primero ${s.show(other)}", fix)
+    }
+
+    private fun terminal(s: MachineState): Check {
+        val entries = plannedEntries(s)
         val missing = missing(s, entries)
         val profile = s.shell.profile ?: s.shell.envFile
         return when {

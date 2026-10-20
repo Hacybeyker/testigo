@@ -42,6 +42,27 @@ testigo_path_usable () {
     [ -n "$testigo_m" ] && [ "$testigo_m" -ge 17 ]
 }
 
+# Cómo escribir este mismo testigo en un mensaje: `testigo` si es el que encuentra la terminal (también por un enlace, como
+# ~/.local/bin/testigo); si no, la ruta que deja install.sh (cli/current), que no cambia con cada versión, o la de esta copia.
+testigo_command () {
+    testigo_f=$( command -v testigo 2>/dev/null ) || testigo_f=
+    while [ -n "$testigo_f" ] && [ -h "$testigo_f" ] ; do
+        testigo_l=$( ls -ld -- "$testigo_f" )
+        testigo_l=${testigo_l#*' -> '}
+        case $testigo_l in
+            /*) testigo_f=$testigo_l ;;
+            *)  testigo_f=${testigo_f%/*}/$testigo_l ;;
+        esac
+    done
+    if [ -n "$testigo_f" ] && [ "$( cd -P -- "${testigo_f%/*}" 2>/dev/null && pwd )" = "$APP_HOME/bin" ] ; then
+        echo testigo
+    elif [ -h "$testigo_state/cli/current" ] && [ "$( cd -P -- "$testigo_state/cli/current" 2>/dev/null && pwd )" = "$APP_HOME" ] ; then
+        echo "$testigo_show/cli/current/bin/testigo"
+    else
+        echo "$APP_HOME/bin/testigo"
+    fi
+}
+
 # Solo con `testigo setup` en una terminal: descarga Temurin 21 en ~/.testigo/jdk/current, si el usuario dice que sí.
 testigo_offer_jdk () {
     testigo_machine=$( uname -m )
@@ -151,7 +172,7 @@ if "$testigo_need" ; then
     fi
     if [ -n "$testigo_found" ] ; then
         if [ -n "$testigo_bad_home" ] ; then
-            echo "Aviso: JAVA_HOME apunta a ${testigo_bad_major:+Java $testigo_bad_major en }$testigo_bad_home; testigo usa el Java de $testigo_found. \`testigo setup\` lo deja configurado." >&2
+            echo "Aviso: JAVA_HOME apunta a ${testigo_bad_major:+Java $testigo_bad_major en }$testigo_bad_home; testigo usa el Java de $testigo_found. \`$( testigo_command ) setup\` lo deja configurado." >&2
             TESTIGO_JAVA_IGNORED=$testigo_bad_home
             export TESTIGO_JAVA_IGNORED
         fi
@@ -167,7 +188,7 @@ if "$testigo_need" ; then
         else
             echo "Error: testigo necesita Java 17 o más y no encontré ninguno (ni en el PATH, ni el de Android Studio)." >&2
         fi
-        echo "Ejecuta \`$APP_HOME/bin/testigo setup\` en una terminal: descarga Java 21 en $testigo_show/jdk, sin root." >&2
+        echo "Ejecuta \`$( testigo_command ) setup\` en una terminal: descarga Java 21 en $testigo_show/jdk, sin root." >&2
         echo "O apunta JAVA_HOME a un JDK 17 o más nuevo, por ejemplo el que trae Android Studio (jbr)." >&2
         echo >&2
         exit 2

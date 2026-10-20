@@ -1,6 +1,6 @@
 # Escribir flows con IA: la skill `testigo-flows`
 
-`testigo` ejecuta los flows y junta la evidencia, pero alguien tiene que escribirlos. La skill `testigo-flows` es para Claude Code: lee el código de la app, confirma los selectores en la pantalla real, escribe los flows y los corre con `testigo` hasta que pasan tres veces seguidas. Viene en `skills/testigo-flows/`, en el repositorio y en el zip.
+`testigo` ejecuta los flows y junta la evidencia, pero alguien tiene que escribirlos. La skill `testigo-flows` es para Claude Code: lee el código de la app, confirma los selectores en la pantalla real, escribe los flows y los corre con `testigo` hasta que pasan tres veces seguidas. Viene en `skills/testigo-flows/`, en el repositorio y en cada versión de `testigo`.
 
 ## Qué hace
 
@@ -22,11 +22,11 @@
 
 Con Claude Code ya instalado (existe `~/.claude`), `testigo setup` ofrece copiarla a `~/.claude/skills/testigo-flows`. Es opcional: no viene marcada y `testigo setup --yes` no la instala. Al actualizar `testigo`, `testigo setup` la actualiza también, y deja la copia anterior en `~/.testigo/backups/` por si la editaste. Claude Code la encuentra en la próxima sesión.
 
-A mano, desde la carpeta donde descomprimiste el zip (en el [README](../README.md#instalar-y-configurar), `~/herramientas`):
+A mano, desde la carpeta de testigo (con [`install.sh`](../README.md#instalar-y-configurar), `~/.testigo/cli/current`; si descomprimiste el zip, esa carpeta):
 
 ```bash
 mkdir -p ~/.claude/skills
-cp -R ~/herramientas/testigo-0.2.0/skills/testigo-flows ~/.claude/skills/
+cp -R ~/.testigo/cli/current/skills/testigo-flows ~/.claude/skills/
 ```
 
 Si la desarrollas, un enlace a `skills/testigo-flows` de un clon del repositorio sirve igual; `testigo setup` no toca un enlace.

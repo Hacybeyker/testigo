@@ -1,5 +1,6 @@
 package testigo.doctor
 
+import testigo.BuildInfo
 import testigo.TestigoException
 import testigo.ExitCode
 import testigo.android.Adb
@@ -29,6 +30,8 @@ import testigo.policy.LintResult
 import testigo.process.Cleanup
 import testigo.process.CommandRunner
 import testigo.process.ProcessCommandRunner
+import testigo.setup.InstallKind
+import testigo.setup.Machine
 import testigo.util.displayFrom
 import java.nio.file.Files
 import java.nio.file.Path
@@ -57,7 +60,7 @@ data class DoctorReport(val sections: List<DoctorSection>) {
 
 /**
  * `testigo doctor`: revisa lo que `testigo run` va a necesitar, sin instalar ni cambiar nada en la máquina ni en el
- * dispositivo. Herramientas (Java, Maestro, adb, aapt2, bundletool), el dispositivo y, con `testigo.yaml`, los flows,
+ * dispositivo. Herramientas (testigo, Java, Maestro, adb, aapt2, bundletool), el dispositivo y, con `testigo.yaml`, los flows,
  * el build, la app instalada, `run-as` y la base de Chucker. Todo es local: lo único que toca es adb.
  */
 class Doctor(
@@ -74,6 +77,8 @@ class Doctor(
     /** Copia un archivo binario del dispositivo (`adb exec-out`). true si terminó bien. */
     private val copy: (List<String>, Path) -> Boolean = { command, target -> ChuckerCapture.execOut(command, target) },
     private val linter: (List<Path>) -> LintResult = { FlowLinter().lint(it) },
+    /** La carpeta de esta instalación de testigo: ver [Machine.appHome]. */
+    private val appHome: Path? = Machine.appHome(env),
 ) {
     /** Lo que se va sabiendo y las secciones siguientes necesitan. */
     private var project: LoadedProject? = null
@@ -101,8 +106,22 @@ class Doctor(
 
     private fun tools(): DoctorSection = DoctorSection(
         "Herramientas",
-        listOf(java()) + maestro() + listOf(adbCheck(), aapt2(), bundletoolCheck()),
+        listOf(testigo(), java()) + maestro() + listOf(adbCheck(), aapt2(), bundletoolCheck()),
     )
+
+    /** La versión y cómo se instaló: con install.sh (y si es la activa), a mano o sin instalar. Solo informa. */
+    private fun testigo(): Check {
+        val version = BuildInfo.VERSION
+        val app = appHome ?: return Check("testigo", CheckStatus.OK, "$version · sin instalar: corre desde el código")
+        val state = Machine.state(env, home)
+        val detail = when (Machine.installKind(app, state)) {
+            InstallKind.SCRIPT -> "instalado con install.sh · ${tilde(app)}"
+            InstallKind.SCRIPT_INACTIVE ->
+                "instalado con install.sh, pero la versión activa es ${Machine.activeVersion(state) ?: "otra"} · ${tilde(app)}"
+            InstallKind.MANUAL, InstallKind.SOURCE -> "instalado a mano · ${tilde(app)}"
+        }
+        return Check("testigo", CheckStatus.OK, "$version · $detail")
+    }
 
     private fun java(): Check {
         val command = JavaProbe.command(env, osName)

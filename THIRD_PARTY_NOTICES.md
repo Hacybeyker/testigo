@@ -2,9 +2,9 @@
 
 `testigo` se distribuye bajo la Licencia Apache 2.0 ([`LICENSE`](LICENSE) y [`NOTICE`](NOTICE)). Este archivo trata solo de lo que es de terceros.
 
-`testigo` se construye con librerías de código abierto. Las que viajan en el zip (carpetas `lib/` y `tools/`) permiten usarlas, copiarlas y redistribuirlas, también en un uso comercial o dentro de una empresa, siempre que se conserven sus avisos de licencia. Este archivo y la carpeta [`licenses/`](licenses/) cumplen con eso. Ninguna obliga a publicar el código de `testigo` ni el de la app que se prueba.
+`testigo` se construye con librerías de código abierto. Las que viajan en cada versión, en el `.zip` y el `.tar.gz` (carpetas `lib/` y `tools/`), permiten usarlas, copiarlas y redistribuirlas, también en un uso comercial o dentro de una empresa, siempre que se conserven sus avisos de licencia. Este archivo y la carpeta [`licenses/`](licenses/) cumplen con eso. Ninguna obliga a publicar el código de `testigo` ni el de la app que se prueba.
 
-## Incluidas en el zip
+## Incluidas en cada versión
 
 | Componente | Versión | Licencia | Para qué la usa `testigo` |
 | --- | --- | --- | --- |
@@ -24,7 +24,7 @@
 
 ## Herramientas que `testigo` usa pero no incluye
 
-No viajan en el zip. Cada dev las instala, a mano o con `testigo setup`, que las descarga de su sitio oficial solo si lo confirma. `testigo` solo las ejecuta en la máquina local.
+No viajan con `testigo`. Cada dev las instala, a mano o con `testigo setup`, que las descarga de su sitio oficial solo si lo confirma. `testigo` solo las ejecuta en la máquina local.
 
 | Herramienta | Licencia | Dónde vive | Con `testigo setup` |
 | --- | --- | --- | --- |
@@ -35,7 +35,7 @@ No viajan en el zip. Cada dev las instala, a mano o con `testigo setup`, que las
 
 ## Solo para compilar y probar
 
-No viajan en el zip.
+No viajan con `testigo`.
 
 | Herramienta | Versión | Licencia |
 | --- | --- | --- |

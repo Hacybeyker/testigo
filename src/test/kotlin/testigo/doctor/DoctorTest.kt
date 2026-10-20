@@ -1,5 +1,6 @@
 package testigo.doctor
 
+import testigo.BuildInfo
 import testigo.TestigoException
 import testigo.ExitCode
 import testigo.artifact.TestApks
@@ -147,6 +148,7 @@ class DoctorTest {
         db: Path? = chuckerDb(),
         environment: Map<String, String> = env,
         linter: (List<Path>) -> LintResult = { LintResult(it, emptyList()) },
+        appHome: Path? = null,
     ) = Doctor(
         loadProject = load,
         device = null,
@@ -168,6 +170,7 @@ class DoctorTest {
             }
         },
         linter = linter,
+        appHome = appHome,
     ).run()
 
     private fun DoctorReport.check(name: String): Check = sections.flatMap { it.checks }.single { it.name == name }
@@ -179,7 +182,7 @@ class DoctorTest {
 
         assertEquals(listOf("Herramientas", "Dispositivo", "Proyecto · suite/testigo.yaml"), report.sections.map { it.title })
         assertEquals(
-            listOf("Java", "Maestro", "Fijada", "adb", "aapt2", "bundletool", "Conectado", "Flows", "Build", "Instalada", "run-as", "Chucker"),
+            listOf("testigo", "Java", "Maestro", "Fijada", "adb", "aapt2", "bundletool", "Conectado", "Flows", "Build", "Instalada", "run-as", "Chucker"),
             report.sections.flatMap { it.checks }.map { it.name },
         )
         assertEquals(emptyList<Check>(), report.sections.flatMap { it.checks }.filter { it.status != CheckStatus.OK })
@@ -192,6 +195,25 @@ class DoctorTest {
         assertEquals("chucker.db · 2 transacciones · esquema compatible", report.check("Chucker").detail)
         assertEquals(ExitCode.OK, report.exitCode)
         assertEquals("Todo listo para testigo run.", DoctorRenderer.summary(report))
+    }
+
+    @Test
+    fun `dice la version de testigo y como se instalo`() {
+        val cli = tmp.resolve("home/.testigo/cli")
+        val old = cli.resolve("0.2.0").createDirectories()
+        val active = cli.resolve("0.3.0").createDirectories()
+        Files.createSymbolicLink(cli.resolve("current"), Path.of("0.3.0"))
+        val manual = tmp.resolve("home/herramientas/testigo-0.2.0").createDirectories()
+
+        fun detail(app: Path?): String {
+            val check = doctor(appHome = app).check("testigo")
+            assertEquals(CheckStatus.OK, check.status)
+            return check.detail.removePrefix("${BuildInfo.VERSION} · ")
+        }
+        assertEquals("instalado con install.sh · ~/.testigo/cli/0.3.0", detail(active))
+        assertEquals("instalado con install.sh, pero la versión activa es 0.3.0 · ~/.testigo/cli/0.2.0", detail(old))
+        assertEquals("instalado a mano · ~/herramientas/testigo-0.2.0", detail(manual))
+        assertEquals("sin instalar: corre desde el código", detail(null))
     }
 
     @Test

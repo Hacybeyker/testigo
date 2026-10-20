@@ -334,7 +334,7 @@ class SetupFlow(
     /** Si no se puede tocar el perfil: lo que sí se puede hacer sin root. */
     private fun alternatives(state: MachineState, profile: String): String {
         val env = ShellEnv.display(state.shell.envFile, state.shellHome)
-        val testigo = state.appHome?.resolve("bin/testigo")?.let { state.show(it) } ?: "bin/testigo"
+        val testigo = state.pathBin?.resolve("testigo")?.let { state.show(it) } ?: "bin/testigo"
         return """
             |
             |Sin tocar $profile, también funciona (nada de esto necesita root):

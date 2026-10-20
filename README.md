@@ -1,6 +1,6 @@
 # testigo
 
-**Pruebas E2E de apps Android con evidencia, en tu máquina.** `testigo` ejecuta los flows de [Maestro](https://maestro.dev) sobre el build de cualquier app Android (APK o AAB, de cualquier build type) y, por cada flow, guarda el video de la pantalla, cada request y response al backend, los logs de la app y un resumen listo para pegar en el PR o en el ticket. Nada de tu app sale de tu máquina: el único comando que usa internet es `testigo setup`, para descargar herramientas oficiales, y solo si lo confirmas.
+**Pruebas E2E de apps Android con evidencia, en tu máquina.** `testigo` ejecuta los flows de [Maestro](https://maestro.dev) sobre el build de cualquier app Android (APK o AAB, de cualquier build type) y, por cada flow, guarda el video de la pantalla, cada request y response al backend, los logs de la app y un resumen listo para pegar en el PR o en el ticket. Nada de tu app sale de tu máquina: solo usan internet el instalador, para bajar `testigo` de sus releases en GitHub, y `testigo setup`, para descargar herramientas oficiales si lo confirmas.
 
 ## Qué resuelve
 
@@ -10,7 +10,7 @@ Los unit tests pasan, pero la app falla en el dispositivo: un request mal armado
 - **Sin tocar la app:** los tests viven fuera del repo de la app y prueban el binario tal como se entrega, con Views o Compose. Sirve para cualquier app: lo propio de cada una está en su `testigo.yaml` y sus flows, no en el runner.
 - **Replicable en el backend:** por defecto guarda los requests exactos, con tokens y bodies. Para compartir la evidencia, `--redact` enmascara tokens, claves y datos personales, y revisa que no quede ninguno.
 - **Local-only:** Maestro corre sin analytics ni servicios en la nube, y una corrida se bloquea si un flow usa comandos de IA, `http` hacia afuera o credenciales escritas.
-- **Repetible y para el equipo:** un zip, `testigo setup` para preparar la máquina sin root, `testigo init` para crear la suite, la versión de Maestro fijada, `testigo doctor` para revisar todo, un comando equivalente para repetir cada corrida y `junit.xml` para CI.
+- **Repetible y para el equipo:** una línea para instalarlo y actualizarlo, `testigo setup` para preparar la máquina sin root, `testigo init` para crear la suite, la versión de Maestro fijada, `testigo doctor` para revisar todo, un comando equivalente para repetir cada corrida y `junit.xml` para CI.
 
 ## Cómo funciona
 
@@ -53,19 +53,27 @@ Los unit tests pasan, pero la app falla en el dispositivo: un request mal armado
 
 En cinco pasos. El detalle de cada uno, con ejemplos, está en la **[guía paso a paso](docs/GUIA.md)**.
 
-**1. Generar el zip y descomprimirlo** donde quieras dejar el CLI. Desde la carpeta de este repositorio:
+**1. Instalar el CLI** con una línea, en macOS o Linux:
 
 ```bash
-./gradlew build                                              # tests y build/distributions/testigo-0.2.0.zip
-unzip build/distributions/testigo-0.2.0.zip -d ~/herramientas
+curl -fsSL https://raw.githubusercontent.com/Hacybeyker/testigo/HEAD/install.sh | bash
 ```
 
-Si alguien de tu equipo ya te pasó el zip, o lo bajaste con su `.sha256` de [Releases](https://github.com/Hacybeyker/testigo/releases), verifícalo con `shasum -a 256 -c testigo-0.2.0.zip.sha256` y descomprímelo igual. Para actualizar a una versión nueva, descomprime su zip al lado del anterior, ejecuta una vez su `bin/testigo setup` y borra la carpeta vieja; lo demás se conserva ([guía](docs/GUIA.md#actualizar-el-cli)).
+Baja la última versión de [Releases](https://github.com/Hacybeyker/testigo/releases), verifica su SHA-256 y la deja en `~/.testigo/cli/<versión>`, con el comando en `~/.local/bin/testigo`. No usa sudo ni toca el perfil de tu terminal: eso lo hace `testigo setup`, en el paso 2. Puedes leer [`install.sh`](install.sh) antes de correrlo.
 
-**2. Preparar la máquina.** `testigo setup` revisa lo que hace falta y, con tu confirmación, instala lo que elijas. No usa root ni sudo: todo queda en tu carpeta de usuario.
+**Actualizar** es la misma línea: la terminal que configuró `testigo setup` pasa sola a la versión nueva, y la anterior queda para volver. Para una versión en particular, o para desinstalar:
 
 ```bash
-~/herramientas/testigo-0.2.0/bin/testigo setup
+curl -fsSL https://raw.githubusercontent.com/Hacybeyker/testigo/HEAD/install.sh | TESTIGO_VERSION=0.2.0 bash      # una versión en particular, o volver a la anterior
+curl -fsSL https://raw.githubusercontent.com/Hacybeyker/testigo/HEAD/install.sh | bash -s -- --uninstall          # desinstalar: quita ~/.testigo/cli y el enlace
+```
+
+Sin internet, o con un archivo que te pasó tu equipo: `TESTIGO_ARCHIVE=testigo-<versión>.tar.gz sh install.sh`, con su `.sha256` al lado. Para descomprimir el zip a mano, o en Windows, ver la [guía](docs/GUIA.md#2-instalar-el-cli).
+
+**2. Preparar la máquina.** `testigo setup` revisa lo que hace falta y, con tu confirmación, instala lo que elijas. No usa root ni sudo: todo queda en tu carpeta de usuario. La primera vez, con el comando que te indica el instalador:
+
+```bash
+~/.local/bin/testigo setup
 ```
 
 | Necesitas | Qué hace `testigo setup` si falta |
@@ -74,9 +82,9 @@ Si alguien de tu equipo ya te pasó el zip, o lo bajaste con su `.sha256` de [Re
 | [Maestro](https://docs.maestro.dev), en la versión del equipo | Lo descarga del release oficial y lo deja en `~/.maestro`. |
 | Android SDK Platform-Tools y Build-Tools (`adb`, `aapt2`) | Los instala con `sdkmanager`, de Google, en `~/Library/Android/sdk` (macOS) o `~/Android/Sdk` (Linux). La licencia del SDK la aceptas tú. |
 | La debug key de Android (para probar un AAB) | La crea en `~/.android/debug.keystore`, como Android Studio. |
-| `testigo`, `maestro` y `adb` en cualquier terminal | Escribe `~/.testigo/env.sh` y agrega una línea que lo carga al perfil de tu terminal (`~/.zshrc`, `~/.bashrc` o el que use tu shell). |
+| `testigo`, `maestro` y `adb` en cualquier terminal | Escribe `~/.testigo/env.sh` y agrega una línea que lo carga al perfil de tu terminal (`~/.zshrc`, `~/.bashrc` o el que use tu shell). Para `testigo` pone `~/.testigo/cli/current/bin`, que sigue a cada actualización. |
 
-Cada descarga sale del sitio oficial y se verifica con su SHA-256 antes de usarla. Si prefieres instalar todo a mano, o tu empresa no deja editar el perfil de la terminal, la [guía](docs/GUIA.md#3-preparar-la-máquina-con-testigo-setup) explica cómo. `bundletool`, para los AAB, ya viene en el zip.
+Cada descarga sale del sitio oficial y se verifica con su SHA-256 antes de usarla. Si prefieres instalar todo a mano, o tu empresa no deja editar el perfil de la terminal, la [guía](docs/GUIA.md#3-preparar-la-máquina-con-testigo-setup) explica cómo. `bundletool`, para los AAB, ya viene con `testigo`.
 
 Al terminar, abre una terminal nueva: `testigo`, `maestro` y `adb` ya funcionan desde cualquier carpeta.
 
@@ -198,7 +206,7 @@ De Maestro, `testigo` solo usa `maestro test` y `maestro --version`. Si una vers
 
 ## Escribir flows con IA
 
-El zip trae en `skills/testigo-flows/` una skill de [Claude Code](https://code.claude.com/docs) que escribe los flows por ti: lee el código de la app (Views XML o Compose, con ids o sin ellos), confirma los selectores en el dispositivo y corre cada flow con `testigo` hasta que pasa tres veces seguidas. En una app grande, empieza por el inventario: deja el mapa de la app, lo que le falta para ser fácil de probar y un backlog de casos por prioridad.
+`testigo` trae en `skills/testigo-flows/` una skill de [Claude Code](https://code.claude.com/docs) que escribe los flows por ti: lee el código de la app (Views XML o Compose, con ids o sin ellos), confirma los selectores en el dispositivo y corre cada flow con `testigo` hasta que pasa tres veces seguidas. En una app grande, empieza por el inventario: deja el mapa de la app, lo que le falta para ser fácil de probar y un backlog de casos por prioridad.
 
 ```bash
 testigo setup                                   # ofrece copiar la skill a ~/.claude/skills
@@ -228,7 +236,7 @@ cd ~/proyectos/MiApp-e2e && claude --add-dir ~/proyectos/MiApp
 
 ## Licencias de terceros
 
-`testigo` usa librerías de código abierto. Las que viajan en el zip permiten usarlas y redistribuirlas, también dentro de una empresa, conservando sus avisos de licencia; el zip los lleva en `THIRD_PARTY_NOTICES.md` y `licenses/`. Ninguna obliga a publicar el código de `testigo` ni el de la app que se prueba.
+`testigo` usa librerías de código abierto. Las que viajan con `testigo` (en el `.zip` y el `.tar.gz` de cada versión) permiten usarlas y redistribuirlas, también dentro de una empresa, conservando sus avisos de licencia; cada versión los lleva en `THIRD_PARTY_NOTICES.md` y `licenses/`. Ninguna obliga a publicar el código de `testigo` ni el de la app que se prueba.
 
 | Librería o herramienta | Licencia | Para qué |
 | --- | --- | --- |
@@ -241,11 +249,11 @@ cd ~/proyectos/MiApp-e2e && claude --add-dir ~/proyectos/MiApp
 | [Kotlin](https://github.com/JetBrains/kotlin) 2.4.21 y JetBrains Annotations | Apache 2.0 | El lenguaje y su runtime. |
 | [sqlite-jdbc](https://github.com/xerial/sqlite-jdbc) 3.53.4.0 | Apache 2.0, con una parte BSD de 2 cláusulas | Leer la base de Chucker. |
 | [bundletool](https://github.com/google/bundletool) 1.18.3 | Apache 2.0 | Convertir un AAB en APKs. |
-| [Maestro](https://github.com/mobile-dev-inc/maestro) | Apache 2.0 | Ejecutar los flows. No viaja en el zip: lo descarga `testigo setup` o lo instalas tú. |
+| [Maestro](https://github.com/mobile-dev-inc/maestro) | Apache 2.0 | Ejecutar los flows. No viaja con `testigo`: lo descarga `testigo setup` o lo instalas tú. |
 | [Chucker](https://github.com/ChuckerTeam/chucker) | Apache 2.0 | Registrar la red dentro de la app. Va en la app, no en `testigo`. |
-| Android SDK (`adb`, `aapt2`, `sdkmanager`) | Android SDK License Agreement | Hablar con el dispositivo. No viaja en el zip: lo instala `sdkmanager` (con `testigo setup`, que te muestra la licencia) o Android Studio. |
-| [Eclipse Temurin](https://adoptium.net) 21 | GPLv2 con Classpath Exception | Java, solo si la máquina no tiene uno 17 o más. No viaja en el zip: lo descarga `testigo setup` si lo confirmas. |
-| [JUnit](https://github.com/junit-team/junit-framework) 6.1.3 | EPL 2.0 | Solo los tests del proyecto; no va en el zip. |
+| Android SDK (`adb`, `aapt2`, `sdkmanager`) | Android SDK License Agreement | Hablar con el dispositivo. No viaja con `testigo`: lo instala `sdkmanager` (con `testigo setup`, que te muestra la licencia) o Android Studio. |
+| [Eclipse Temurin](https://adoptium.net) 21 | GPLv2 con Classpath Exception | Java, solo si la máquina no tiene uno 17 o más. No viaja con `testigo`: lo descarga `testigo setup` si lo confirmas. |
+| [JUnit](https://github.com/junit-team/junit-framework) 6.1.3 | EPL 2.0 | Solo los tests del proyecto; no viaja con `testigo`. |
 
 El detalle, con versiones y textos completos, está en [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
@@ -259,8 +267,12 @@ Está escrito en Kotlin, con Gradle. Se necesita Java 17 o más. La primera comp
 
 ```bash
 ./gradlew test           # solo los tests
-./gradlew build          # tests y build/distributions/testigo-0.2.0.zip con su .sha256
-./gradlew installDist    # el CLI en build/install/testigo/bin/testigo, sin zip
+./gradlew build          # tests, y en build/distributions/ el .zip y el .tar.gz, el .sha256 de cada uno y SHA256SUMS
+./gradlew installDist    # el CLI en build/install/testigo/bin/testigo, sin archivos
+sh scripts/test-install.sh build/distributions   # prueba install.sh con ese build, sin tocar tu ~/.testigo
+TESTIGO_ARCHIVE=build/distributions/testigo-0.3.0-dev.tar.gz sh install.sh   # lo instala como uno publicado
 ```
 
-La versión de `testigo` está solo en `version` de `build.gradle.kts`: `testigo --version` y el nombre del zip salen de ahí. Cómo está organizado el código y las versiones de cada dependencia: [guía de uso › Desarrollo](docs/USO.md#desarrollo).
+En cada push y pull request, la [CI](.github/workflows/ci.yml) compila, corre los tests, revisa los scripts con ShellCheck y prueba `install.sh` en Linux (x64 y arm64) y macOS (Apple Silicon e Intel).
+
+La versión de `testigo` está solo en `version` de `build.gradle.kts`: `testigo --version` y el nombre de los archivos salen de ahí. Entre un release y el siguiente lleva `-dev` (por ejemplo `0.3.0-dev`), y se quita al publicar. Cómo está organizado el código y las versiones de cada dependencia: [guía de uso › Desarrollo](docs/USO.md#desarrollo).

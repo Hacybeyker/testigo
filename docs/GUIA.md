@@ -23,7 +23,7 @@ Esta guía lleva de cero a la primera corrida con evidencia: instalar el CLI, pr
 Hay tres cosas, cada una en su lugar:
 
 ```
-~/herramientas/testigo-0.2.0/   el CLI: se instala una vez por máquina (con testigo setup)
+~/.testigo/cli/                 el CLI: se instala una vez por máquina (con install.sh)
 ~/proyectos/MiApp/              tu app, como siempre: testigo no toca este repo
 └── app/build/outputs/apk/…     el APK o AAB que generas con Gradle
 ~/proyectos/MiApp-e2e/          la suite: los tests y su configuración
@@ -41,51 +41,95 @@ Cuando ejecutas `testigo run` desde la carpeta de la suite:
 4. Al terminar cada flow, copia la base de Chucker de la app para sacar los requests y responses.
 5. Escribe todo en `evidence/` y un `summary.md` para pegar en el PR o el ticket.
 
-Nada de tu app sale de tu máquina: el runner solo habla con el dispositivo por adb y con `localhost`. El único comando que usa internet es `testigo setup`, y solo para descargar herramientas oficiales cuando lo confirmas.
+Nada de tu app sale de tu máquina: el runner solo habla con el dispositivo por adb y con `localhost`. Solo usan internet el instalador, para bajar `testigo` de sus releases en GitHub, y `testigo setup`, para descargar herramientas oficiales cuando lo confirmas.
 
 ## 2. Instalar el CLI
 
 No hace falta tener nada instalado antes, ni siquiera Java: si falta, el [paso 3](#3-preparar-la-máquina-con-testigo-setup) lo resuelve.
 
-### Opción A: desde el zip (lo normal en un equipo)
+### Con una línea (lo normal)
 
-Alguien del equipo genera el zip una vez (opción B) y lo comparte, o lo bajas con su `.sha256` de [Releases](https://github.com/Hacybeyker/testigo/releases). Lo instalas así:
+En macOS o Linux:
 
 ```bash
-shasum -a 256 -c testigo-0.2.0.zip.sha256              # el zip llegó entero
-unzip testigo-0.2.0.zip -d ~/herramientas              # cualquier carpeta sirve
+curl -fsSL https://raw.githubusercontent.com/Hacybeyker/testigo/HEAD/install.sh | bash
 ```
 
-### Opción B: compilarlo desde el código
+```
+Descargando testigo-0.3.0.tar.gz de github.com/Hacybeyker/testigo…
+✔ testigo 0.3.0 en ~/.testigo/cli/0.3.0
+✔ ~/.local/bin/testigo → ~/.testigo/cli/current/bin/testigo
+✔ testigo version 0.3.0
+  ~/.local/bin no está en tu PATH: testigo setup lo resuelve.
+
+Siguiente: ~/.local/bin/testigo setup
+  Revisa Java, Maestro, el Android SDK y el PATH, y te pregunta antes de cambiar algo.
+```
+
+El instalador baja la última versión de [Releases](https://github.com/Hacybeyker/testigo/releases) por HTTPS y verifica su SHA-256: si no coincide, no instala nada. Deja cada versión en su carpeta, `~/.testigo/cli/<versión>`, con `~/.testigo/cli/current` apuntando a la activa y el comando `testigo` en `~/.local/bin`. No usa sudo, no edita el perfil de tu terminal y no envía nada: el PATH lo configura `testigo setup`, en el paso 3. Necesita `curl` y `tar` (o `unzip`); si falta alguno, dice cómo instalarlo. Si quieres leerlo antes de correrlo, es [`install.sh`](../install.sh).
+
+| Variable | Para qué |
+| --- | --- |
+| `TESTIGO_VERSION` | Una versión en particular, por ejemplo `0.2.0`. Por defecto, la última publicada. |
+| `TESTIGO_ARCHIVE` | Instalar un `.tar.gz` o un `.zip` que ya tienes, con su `.sha256` al lado, sin descargar nada. |
+| `TESTIGO_HOME` | Otra carpeta en lugar de `~/.testigo`. |
+| `TESTIGO_BIN_DIR` | Otra carpeta para el enlace `testigo`, en lugar de `~/.local/bin`. |
+
+La variable va antes de `bash`: `curl -fsSL … | TESTIGO_VERSION=0.2.0 bash`.
+
+### Desde un archivo (sin internet, o el que comparte tu equipo)
+
+Con el `.tar.gz` (o el `.zip`) y su `.sha256` de [Releases](https://github.com/Hacybeyker/testigo/releases), o los que generas al compilar, y una copia de [`install.sh`](../install.sh):
+
+```bash
+TESTIGO_ARCHIVE=testigo-0.3.0.tar.gz sh install.sh     # verifica el SHA-256 e instala como la línea de arriba
+```
+
+Si prefieres no usar el instalador, descomprímelo donde quieras y, en el paso 3, ejecuta su `bin/testigo setup` con la ruta completa:
+
+```bash
+shasum -a 256 -c testigo-0.3.0.zip.sha256              # el zip llegó entero
+unzip testigo-0.3.0.zip -d ~/herramientas              # cualquier carpeta sirve
+```
+
+### Compilarlo desde el código
 
 Para compilar sí hace falta Java 17 o más (`./gradlew` lo usa):
 
 ```bash
 cd testigo
-./gradlew build          # corre los tests y deja build/distributions/testigo-0.2.0.zip
-./gradlew installDist    # o, sin zip, el CLI listo en build/install/testigo/
+./gradlew build                                                            # tests, y el .tar.gz y el .zip en build/distributions/
+TESTIGO_ARCHIVE=build/distributions/testigo-0.3.0-dev.tar.gz sh install.sh  # instálalo como uno publicado
 ```
 
 ### Actualizar el CLI
 
-Cada versión trae su propia carpeta (`testigo-0.2.0`, `testigo-0.3.0`…), así que la nueva se instala al lado de la anterior. No se toca nada más: tus suites, `~/.testigo/` (el Java que descargó `testigo setup` y el estado de las instalaciones), Maestro, el Android SDK ni la configuración de la terminal.
+Con la misma línea de la instalación:
 
 ```bash
-shasum -a 256 -c testigo-0.2.0.zip.sha256              # el zip nuevo llegó entero
-unzip testigo-0.2.0.zip -d ~/herramientas              # al lado de la versión anterior
-~/herramientas/testigo-0.2.0/bin/testigo setup         # la terminal pasa a usar la nueva
+curl -fsSL https://raw.githubusercontent.com/Hacybeyker/testigo/HEAD/install.sh | bash
 ```
 
-`testigo setup` ofrece configurar la terminal para la carpeta nueva y, si usas la skill de Claude Code, actualizarla ([Flows con IA](FLOWS-CON-IA.md#instalar)). En una terminal nueva, `command -v testigo` muestra la ruta de la nueva y `testigo doctor` en tu suite confirma que todo sigue bien; si el equipo fijó otra versión de Maestro, lo dice. Después borra la carpeta anterior (`rm -rf ~/herramientas/testigo-0.1.0`).
+La versión nueva queda al lado de la anterior y `cli/current` pasa a apuntar a ella. Como `testigo setup` puso `~/.testigo/cli/current/bin` en el PATH, una terminal nueva ya usa la nueva sin hacer nada más, y el instalador termina con «Listo: tu terminal ya usa esta versión». No se toca nada más: tus suites, el Java que descargó `testigo setup`, Maestro, el Android SDK ni la configuración de la terminal.
 
-Un zip de la **misma versión** (por ejemplo, uno recompilado) va en la misma carpeta: borra la anterior y descomprímelo ahí. La terminal ya apunta a esa carpeta y no hace falta `testigo setup`.
+Se conservan la versión activa y la anterior: para volver, `curl -fsSL … | TESTIGO_VERSION=<la anterior> bash`. En tu suite, `testigo doctor` confirma que todo sigue bien; si el equipo fijó otra versión de Maestro, lo dice. Si la versión nueva trae cambios en la skill de Claude Code, `testigo setup` ofrece actualizar tu copia ([Flows con IA](FLOWS-CON-IA.md#instalar)).
+
+**Si instalaste un zip a mano** (por ejemplo, en `~/herramientas/testigo-0.2.0`), o una versión anterior a la 0.3.0 configuró tu terminal: después de la línea, el instalador avisa que tu terminal todavía usa la otra y pide un `testigo setup` más, con la ruta completa. Ese setup pasa la terminal a `~/.testigo/cli/current`; después borra la carpeta vieja.
+
+### Desinstalar
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Hacybeyker/testigo/HEAD/install.sh | bash -s -- --uninstall
+```
+
+Quita `~/.testigo/cli` y el enlace `~/.local/bin/testigo`. No toca Java (`~/.testigo/jdk`), Maestro, el Android SDK ni tus suites. Para quitar también la configuración de la terminal, ver [¿Hace falta root o sudo?](#hace-falta-root-o-sudo).
 
 ## 3. Preparar la máquina con `testigo setup`
 
-`testigo setup` revisa lo que `testigo` necesita en tu máquina, te muestra qué falta y, con tu confirmación, lo instala. La primera vez se ejecuta con la ruta completa, porque `testigo` todavía no está en el PATH:
+`testigo setup` revisa lo que `testigo` necesita en tu máquina, te muestra qué falta y, con tu confirmación, lo instala. La primera vez se ejecuta con el comando que te indicó el instalador, porque `testigo` todavía no está en el PATH (en Linux, donde `~/.local/bin` suele estarlo, basta `testigo setup`):
 
 ```bash
-~/herramientas/testigo-0.2.0/bin/testigo setup
+~/.local/bin/testigo setup
 ```
 
 ```
@@ -118,7 +162,7 @@ Qué revisa y qué hace con cada cosa:
 | **Maestro** | Descarga del release oficial de GitHub la versión del `testigo.yaml` de la carpeta actual (o la 2.11.0) y la deja en `~/.maestro`, igual que su instalador. Si ya tienes Maestro, solo lo cambia si `testigo.yaml` fija otra versión y fue `testigo` quien lo instaló. |
 | **Android SDK**: Platform-Tools (`adb`) y Build-Tools (`aapt2`) | Si tienes el SDK de Android Studio, agrega solo lo que falta con su `sdkmanager`. Si no hay SDK, descarga las command-line tools de Google en `~/Library/Android/sdk` (en Linux, `~/Android/Sdk`) y con ellas instala lo demás. |
 | **Debug key** (`~/.android/debug.keystore`) | La crea con `keytool`, igual que Android Studio. Con ella se firman los APKs que salen de un AAB. |
-| **Terminal** | Escribe `~/.testigo/env.sh` con `JAVA_HOME`, `ANDROID_HOME`, las variables `MAESTRO_*` que dejan a Maestro sin analytics, y las carpetas de `testigo`, `maestro` y `adb` en el PATH. Agrega al final de `~/.zshrc` una línea que lo carga, y antes guarda una copia del original en `~/.zshrc.testigo-backup`. |
+| **Terminal** | Escribe `~/.testigo/env.sh` con `JAVA_HOME`, `ANDROID_HOME`, las variables `MAESTRO_*` que dejan a Maestro sin analytics, y las carpetas de `testigo`, `maestro` y `adb` en el PATH (para `testigo`, `~/.testigo/cli/current/bin`, que sigue a cada actualización). Agrega al final de `~/.zshrc` una línea que lo carga, y antes guarda una copia del original en `~/.zshrc.testigo-backup`. |
 
 **Licencia del Android SDK.** Antes de instalar, `sdkmanager` muestra la licencia de Google y pregunta si la aceptas: escribe `y`. `testigo` nunca la acepta por ti; si dices que no, no se instala nada.
 
@@ -137,13 +181,14 @@ No. `testigo setup` nunca pide root ni usa `sudo`: todo queda dentro de tu carpe
 
 | Qué | Dónde queda |
 | --- | --- |
+| testigo (con `install.sh`) | `~/.testigo/cli` y el enlace `~/.local/bin/testigo` |
 | Java | `~/.testigo/jdk` |
 | Maestro | `~/.maestro` |
 | Android SDK | `~/Library/Android/sdk` (macOS) o `~/Android/Sdk` (Linux) |
 | Debug key | `~/.android/debug.keystore` |
 | Variables de la terminal | `~/.testigo/env.sh` y una línea en tu `~/.zshrc` (o `~/.bash_profile`, `~/.bashrc` o `~/.config/fish/conf.d/testigo.fish`, según tu terminal) |
 
-Para deshacerlo, borra el bloque entre `# >>> testigo >>>` y `# <<< testigo <<<` de tu `~/.zshrc`, y las carpetas de la tabla.
+Para deshacerlo, borra el bloque entre `# >>> testigo >>>` y `# <<< testigo <<<` de tu `~/.zshrc`, y las carpetas de la tabla. testigo se quita con `install.sh --uninstall` ([sección 2](#desinstalar)).
 
 ### Si tu empresa restringe la máquina
 
@@ -167,7 +212,7 @@ El Android SDK, con Android Studio: en *Tools › SDK Manager › SDK Tools*, ma
 ```bash
 export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"   # o tu JDK 17+
 export ANDROID_HOME="$HOME/Library/Android/sdk"                                   # en Linux, ~/Android/Sdk
-export PATH="$HOME/herramientas/testigo-0.2.0/bin:$HOME/.maestro/bin:$ANDROID_HOME/platform-tools:$PATH"
+export PATH="$HOME/.testigo/cli/current/bin:$HOME/.maestro/bin:$ANDROID_HOME/platform-tools:$PATH"   # o el bin/ de donde descomprimiste testigo
 # Maestro sin analytics ni consultas a sus servidores, también fuera de testigo:
 export MAESTRO_CLI_NO_ANALYTICS=1
 export MAESTRO_DISABLE_UPDATE_CHECK=true
@@ -177,14 +222,15 @@ export MAESTRO_CLI_ANALYSIS_NOTIFICATION_DISABLED=true
 
 `testigo` siempre ejecuta Maestro con esas variables. Hacen falta en la terminal solo si usas `maestro` directamente, por ejemplo `maestro hierarchy`.
 
-**En Windows**, `testigo setup` todavía solo revisa. Instala Java 17 o más, Maestro y Android Studio a mano, y agrega `C:\herramientas\testigo-0.2.0\bin` a la variable `Path` en *Configuración › Sistema › Información › Configuración avanzada del sistema › Variables de entorno*. Windows todavía no se ha probado.
+**En Windows**, `testigo setup` todavía solo revisa. Instala Java 17 o más, Maestro y Android Studio a mano, descomprime el zip de [Releases](https://github.com/Hacybeyker/testigo/releases) (por ejemplo en `C:\herramientas`) y agrega `C:\herramientas\testigo-0.3.0\bin` a la variable `Path` en *Configuración › Sistema › Información › Configuración avanzada del sistema › Variables de entorno*. Windows todavía no se ha probado.
 
 ### Comprobar
 
 En una terminal nueva:
 
 ```bash
-testigo --version        # testigo version 0.2.0
+command -v testigo       # ~/.testigo/cli/current/bin/testigo
+testigo --version        # testigo version 0.3.0
 testigo --help           # los comandos: setup, init, doctor, list y run
 testigo setup --check    # todo en ✔
 ```
@@ -409,7 +455,7 @@ Reglas que conviene seguir:
 
 La referencia de los comandos de Maestro está en su [documentación](https://docs.maestro.dev).
 
-**Con Claude Code**, la skill `testigo-flows` que viene en el zip escribe los flows por ti y los valida en el dispositivo, también en apps sin ids. `testigo setup` ofrece copiarla; qué pedirle está en [Flows con IA](FLOWS-CON-IA.md).
+**Con Claude Code**, la skill `testigo-flows` que viene con testigo escribe los flows por ti y los valida en el dispositivo, también en apps sin ids. `testigo setup` ofrece copiarla; qué pedirle está en [Flows con IA](FLOWS-CON-IA.md).
 
 ## 8. Revisar todo con `testigo doctor`
 
@@ -422,12 +468,13 @@ testigo doctor
 
 ```
 Herramientas
+  ✔ testigo     0.3.0 · instalado con install.sh · ~/.testigo/cli/0.3.0
   ✔ Java        21.0.8 · JAVA_HOME · …
   ✔ Maestro     2.11.0 · ~/.maestro/bin/maestro
   ✔ Fijada      2.11.0, la de testigo.yaml
   ✔ adb         36.0.0 · ~/Library/Android/sdk/platform-tools/adb
   ✔ aapt2       build-tools 36.1.0 · …
-  ✔ bundletool  1.18.3 · ~/herramientas/testigo-0.2.0/tools/…
+  ✔ bundletool  1.18.3 · ~/.testigo/cli/0.3.0/tools/…
 
 Dispositivo
   ✔ Conectado   8a7b6c5d · Pixel 8 · Android 14 (API 34)
@@ -554,9 +601,11 @@ testigo doctor && testigo run --ci --profile smoke
 
 ## 12. Preguntas frecuentes
 
-**¿Cómo instalo el CLI?** Descomprime el zip y ejecuta `bin/testigo setup` ([secciones 2 y 3](#2-instalar-el-cli)). No necesitas tener Java antes.
+**¿Cómo instalo el CLI?** Con la línea de `install.sh` y luego `testigo setup` ([secciones 2 y 3](#2-instalar-el-cli)). No necesitas tener Java antes.
 
-**¿Cómo actualizo el CLI?** Reemplaza su carpeta por la del zip nuevo, en el mismo lugar ([sección 2](#actualizar-el-cli)). Lo demás se conserva.
+**¿Cómo actualizo el CLI?** Con la misma línea: la terminal pasa sola a la versión nueva y la anterior queda para volver ([sección 2](#actualizar-el-cli)). Lo demás se conserva.
+
+**¿Cómo lo desinstalo?** Con la misma línea, cambiando el `bash` del final por `bash -s -- --uninstall` ([sección 2](#desinstalar)). No toca Java, Maestro, el Android SDK ni tus suites.
 
 **¿Cuál es el primer comando?** `testigo setup`, para preparar la máquina. Luego `testigo init` en la carpeta de tu suite, y `testigo doctor`.
 
@@ -587,6 +636,7 @@ testigo doctor && testigo run --ci --profile smoke
 | Mensaje | Qué hacer |
 | --- | --- |
 | `testigo necesita Java 17 o más` | Ejecuta `testigo setup` en una terminal: encuentra o descarga uno. O apunta `JAVA_HOME` a un JDK 17 o más nuevo. |
+| `tu terminal todavía usa otro testigo` (instalador), o `En el PATH` en `testigo setup` | Otra instalación va antes en el PATH, por ejemplo un zip descomprimido a mano. Ejecuta `testigo setup` de la nueva con la ruta que indica el instalador: pone la suya primero. Después borra la otra. |
 | `Aviso: JAVA_HOME apunta a …; testigo usa el Java de …` | Tu `JAVA_HOME` es de un Java viejo o no existe, y `testigo` usó otro. `testigo setup` deja el bueno en la terminal. |
 | `No hay dispositivos conectados` | Conecta el teléfono con depuración USB o inicia el emulador; revisa con `adb devices`. |
 | `no autorizó la depuración` | Acepta el aviso "¿Permitir depuración USB?" en el teléfono. |

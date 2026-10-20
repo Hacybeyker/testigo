@@ -1,0 +1,27 @@
+# Propone actualizar las actions (su SHA y el comentario de versión) y las dependencias de Gradle, una vez por semana y
+# en un solo PR por grupo. cooldown espera unos días antes de proponer una versión recién publicada.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      actions:
+        patterns: ["*"]
+    commit-message:
+      prefix: ci
+
+  - package-ecosystem: gradle
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      gradle:
+        patterns: ["*"]
+    commit-message:
+      prefix: build
