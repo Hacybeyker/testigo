@@ -525,6 +525,8 @@ Antes de compilar, `./scripts/check-env.sh` revisa que la máquina tenga Java, M
 
 **Versión.** Está en un solo lugar: `version` de `build.gradle.kts`. La tarea `generateBuildInfo` la escribe en `build/generated/` como una constante que leen `testigo --version`, `metadata.json` y el HAR, y los archivos de la distribución toman su nombre. Entre un release y el siguiente lleva `-dev` (por ejemplo `0.3.0-dev`); para lanzar una versión se le quita el sufijo y su sección `Sin publicar` del `CHANGELOG.md` pasa a llevar el número y la fecha.
 
+**Publicar.** Con esos dos cambios en un commit de `master`, se sube su tag: `git tag -a v<versión> -m "testigo <versión>" && git push origin v<versión>`. [`.github/workflows/release.yml`](../.github/workflows/release.yml) revisa que el tag coincida con `version`, que su commit esté en `master` y que el `CHANGELOG.md` tenga la sección `## <versión> - <fecha>`; compila sin caché, genera la attestation de los archivos y de `install.sh`, y prueba `install.sh` en Linux x64 y arm64 y macOS Apple Silicon e Intel. Recién entonces publica el release con el `.zip`, el `.tar.gz`, sus `.sha256`, `SHA256SUMS`, `install.sh` y, como notas, esa sección del CHANGELOG. Si algo falla, no publica nada. Un tag con sufijo (`v0.3.0-rc.1`) sale como pre-release y no cambia la versión que instala `curl … | bash` por defecto. Al final, el workflow instala la versión publicada con `curl … | bash` en Linux y macOS y verifica su attestation, como lo haría alguien del equipo: `gh attestation verify testigo-<versión>.tar.gz -R Hacybeyker/testigo`.
+
 En IntelliJ IDEA: **File > Open** sobre esta carpeta, un **Gradle JVM** 17 o superior en **Settings > Build Tools > Gradle**, y la configuración incluida **testigo run --dry-run (demo)**. Hasta el primer `./gradlew build`, el IDE marca `GENERATED_VERSION` como desconocida: la genera ese build.
 
 ### Estructura
@@ -560,7 +562,7 @@ THIRD_PARTY_NOTICES.md licencias de las dependencias; va en cada versión con li
 scripts/check-env.sh   verifica que la máquina tenga todo lo necesario
 scripts/test-install.sh prueba install.sh con un build o un release (lo usa la CI)
 install.sh             el instalador de una línea: curl … | bash
-.github/               la CI (build, ShellCheck e install.sh en Linux y macOS) y Dependabot
+.github/               la CI (build, ShellCheck e install.sh en Linux y macOS), los releases y Dependabot
 examples/demo-suite/   suite de ejemplo para probar el CLI
 ```
 

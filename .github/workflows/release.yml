@@ -1,0 +1,219 @@
+# Publica un release al subir un tag vX.Y.Z, o vX.Y.Z-rc.N como pre-release. Antes revisa que el tag coincida con
+# `version` de build.gradle.kts, que su commit esté en master y que el CHANGELOG tenga su sección; compila, firma la
+# procedencia de los archivos (attestation) y prueba install.sh con ellos en Linux y macOS. Solo si todo pasa crea el
+# release, primero como borrador con todos sus archivos, y lo publica: con releases inmutables, desde ahí ya no cambia.
+# Al final instala la versión publicada con curl … | bash, como un usuario.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  check:
+    name: Controles
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: El tag, la versión y master
+        id: version
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          version=${TAG#v}
+          if ! printf '%s' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$'; then
+            echo "::error::El tag $TAG no tiene la forma vX.Y.Z ni vX.Y.Z-<pre>."
+            exit 1
+          fi
+          case $version in
+            *-dev*) echo "::error::$TAG es una versión -dev: no se publica." ; exit 1 ;;
+          esac
+          gradle_version=$(sed -n 's/^version = "\(.*\)"$/\1/p' build.gradle.kts)
+          if [ "$gradle_version" != "$version" ]; then
+            echo "::error::El tag es $TAG, pero build.gradle.kts dice version = \"$gradle_version\"."
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/master; then
+            echo "::error::El commit del tag $TAG no está en master."
+            exit 1
+          fi
+          case $version in
+            *-*) prerelease=true ;;
+            *) prerelease=false ;;
+          esac
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "prerelease=$prerelease" >> "$GITHUB_OUTPUT"
+      - name: Notas, desde el CHANGELOG
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          awk -v head="## $VERSION - " 'index($0, head) == 1 { on = 1; next } on && /^## / { exit } on { print }' CHANGELOG.md > notes.md
+          if ! grep -q '[^[:space:]]' notes.md; then
+            echo "::error::CHANGELOG.md no tiene una sección «## $VERSION - <fecha>» con contenido."
+            exit 1
+          fi
+          # shellcheck disable=SC2016 # las comillas invertidas son Markdown
+          {
+            printf '\n### Instalar\n\n```bash\n'
+            printf 'curl -fsSL https://raw.githubusercontent.com/%s/HEAD/install.sh | TESTIGO_VERSION=%s bash\n' "$GITHUB_REPOSITORY" "$VERSION"
+            printf '```\n\n'
+            printf 'Verificar los archivos a mano: `shasum -a 256 -c SHA256SUMS`. Que salieron de este repositorio y de este workflow: `gh attestation verify testigo-%s.tar.gz -R %s`.\n' "$VERSION" "$GITHUB_REPOSITORY"
+          } >> notes.md
+          cat notes.md
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: notes
+          path: notes.md
+          if-no-files-found: error
+
+  build:
+    name: Build y attestation
+    needs: check
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: gradle/actions/wrapper-validation@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+      # Sin caché: el build de un release parte de cero.
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: ./gradlew build
+        run: ./gradlew build
+      - name: Los archivos del release
+        env:
+          VERSION: ${{ needs.check.outputs.version }}
+        working-directory: build/distributions
+        run: |
+          ls -l
+          for f in "testigo-$VERSION.zip" "testigo-$VERSION.tar.gz" "testigo-$VERSION.zip.sha256" "testigo-$VERSION.tar.gz.sha256" SHA256SUMS; do
+            [ -f "$f" ] || { echo "::error::falta $f en build/distributions"; exit 1; }
+          done
+          sha256sum -c SHA256SUMS
+      - uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: |
+            build/distributions/testigo-${{ needs.check.outputs.version }}.zip
+            build/distributions/testigo-${{ needs.check.outputs.version }}.tar.gz
+            install.sh
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release
+          path: build/distributions/
+          if-no-files-found: error
+
+  install:
+    name: Instalador · ${{ matrix.os }}
+    needs: build
+    strategy:
+      fail-fast: true
+      matrix:
+        os: [ubuntu-24.04, ubuntu-24.04-arm, macos-15, macos-15-intel]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release
+          path: dist
+      - name: Instalar y desinstalar
+        run: sh scripts/test-install.sh dist
+
+  publish:
+    name: Publicar
+    needs: [check, install]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release
+          path: dist
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: notes
+          path: notes
+      # Borrador primero, con todos los archivos, y después publicado: un release inmutable no acepta archivos nuevos.
+      - name: Crear el release y publicarlo
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          VERSION: ${{ needs.check.outputs.version }}
+          PRERELEASE: ${{ needs.check.outputs.prerelease }}
+        run: |
+          if [ "$PRERELEASE" = true ]; then
+            set -- --prerelease --latest=false
+          else
+            set -- --latest
+          fi
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --draft --verify-tag \
+            --title "testigo $VERSION" --notes-file notes/notes.md "$@" dist/* install.sh
+          gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false "$@"
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY"
+
+  verify:
+    name: Instalar lo publicado · ${{ matrix.os }}
+    needs: [check, publish]
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      attestations: read
+    steps:
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: curl … | bash, con TESTIGO_VERSION
+        env:
+          VERSION: ${{ needs.check.outputs.version }}
+        run: |
+          curl -fsSL "https://raw.githubusercontent.com/$GITHUB_REPOSITORY/$GITHUB_SHA/install.sh" \
+            | TESTIGO_VERSION="$VERSION" TESTIGO_HOME="$RUNNER_TEMP/testigo" TESTIGO_BIN_DIR="$RUNNER_TEMP/bin" bash
+          "$RUNNER_TEMP/bin/testigo" --version | grep -Fx "testigo version $VERSION"
+      - name: La attestation del .tar.gz publicado
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          VERSION: ${{ needs.check.outputs.version }}
+        run: |
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern "testigo-$VERSION.tar.gz" --dir "$RUNNER_TEMP"
+          gh attestation verify "$RUNNER_TEMP/testigo-$VERSION.tar.gz" --repo "$GITHUB_REPOSITORY"
