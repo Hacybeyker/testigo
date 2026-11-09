@@ -88,6 +88,7 @@ class LogCapture(
         runner.run(adb(listOf("logcat", "-c")), 30.seconds)
         val filter = if (uid != null && (sdk ?: 0) >= UID_FILTER_MIN_SDK) listOf("--uid=$uid") else emptyList()
         val file = Files.createTempFile("testigo-logcat-", ".txt").also { raw = it }
+        update(record.copy(rawFile = file.toString()))
         val started = startProcess(adb(listOf("logcat", "-v", "threadtime") + filter), file)
         process = started
         update(record.copy(logcatPid = started.pid(), logcatStart = Identity.startOf(started.toHandle())))
@@ -163,11 +164,11 @@ class LogCapture(
         val sizes = record.buffers
         if (sizes.isNotEmpty() && (store == null || !store.othersAlive(file!!))) {
             if (!restore(sizes)) {
-                update(record.copy(logcatPid = null, logcatStart = null))
+                update(record.copy(logcatPid = null, logcatStart = null, rawFile = null))
                 return false
             }
         }
-        record = record.copy(logcatPid = null, logcatStart = null, buffers = emptyMap())
+        record = record.copy(logcatPid = null, logcatStart = null, rawFile = null, buffers = emptyMap())
         file?.let { store?.delete(it) }
         return true
     }
