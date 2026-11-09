@@ -70,7 +70,8 @@ evidence/<fecha>_<ticket>_<commit>/
     ├── network.txt  cada request y response (o network.har)
     ├── network-steps.txt  las llamadas de red agrupadas por el paso del flow
     ├── logcat.txt
-    └── crash.txt    solo si la app se cerró
+    ├── crash.txt    solo si la app se cerró
+    └── maestro/<flow>/takeScreenshot/<nombre>.png   las capturas del flow, y logs y comandos de Maestro
 ```
 
 Con `--repeat`, cada corrida queda en `<flow>/<ronda>/` (`login/2/report.html`) y `summary.md` dice de cada flow cuántas veces pasó y si es estable, intermitente o falla siempre.

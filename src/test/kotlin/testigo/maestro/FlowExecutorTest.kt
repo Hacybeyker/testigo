@@ -71,6 +71,7 @@ class FlowExecutorTest {
             mkdir -p "${'$'}out/2026-10-16_143012/${'$'}name"
             echo "log" > "${'$'}out/2026-10-16_143012/maestro.log"
             echo "{}" > "${'$'}out/2026-10-16_143012/${'$'}name/commands.json"
+            case "${'$'}name" in *captura*) mkdir -p "${'$'}out/2026-10-16_143012/${'$'}name/takeScreenshot/antes"; printf 'PNG' > "${'$'}out/2026-10-16_143012/${'$'}name/takeScreenshot/antes/paso1.png";; esac
             case "${'$'}name" in *pasos*) cp "${'$'}(dirname "${'$'}0")/commands-pasos.json" "${'$'}out/2026-10-16_143012/${'$'}name/commands.json";; esac
             mkdir -p "${'$'}out/2026-10-16_143012/${'$'}name/logs"
             echo "logs de otras apps" > "${'$'}out/2026-10-16_143012/${'$'}name/logs/device-logcat.txt"
@@ -163,6 +164,7 @@ class FlowExecutorTest {
         assertFalse(calls[0].contains("--no-reinstall-driver"), calls[0])
         assertTrue(calls[1].contains("--no-reinstall-driver"), calls[1])
         assertTrue(calls.all { "--device emulator-5554" in it && "--format HTML-DETAILED" in it }, calls.toString())
+        assertTrue(calls.all { "--test-output-dir" in it }, "sin esto, takeScreenshot guardaría en ~/.maestro/tests: $calls")
         assertTrue(calls.all { it.endsWith("MAESTRO_API_URL=http://127.0.0.1:9") }, calls.toString())
     }
 
@@ -479,6 +481,21 @@ class FlowExecutorTest {
 
         assertNull(first.flows.single().network!!.steps, "el commands.json de la prueba es {}")
         assertNull(second.flows.single().network!!.steps)
+    }
+
+    @Test
+    fun `las capturas de takeScreenshot llegan a la evidencia del flow, con su subcarpeta y sin tocar ~ maestro`() {
+        val result = FlowExecutor(MaestroCli(fakeMaestro())).run(
+            flows = listOf(flow("captura.yaml", null)),
+            device = "emulator-5554",
+            env = emptyMap(),
+            evidenceRoot = tmp.resolve("evidence"),
+            appId = "com.empresa.app",
+        )
+
+        val shot = result.flows.single().dir.resolve("maestro/captura/takeScreenshot/antes/paso1.png")
+        assertTrue(shot.exists(), "la captura queda en <flow>/maestro/<flow>/takeScreenshot/: ${result.flows.single().dir.toFile().walk().toList()}")
+        assertEquals("PNG", shot.readText(), "los binarios se copian tal cual")
     }
 
     companion object {

@@ -89,6 +89,7 @@ Todo lo que lees queda en la conversación y se vuelve a enviar en cada paso. Le
 5. Si la app tiene varios idiomas y el elemento no tiene id, usa alternancia con el texto de cada `strings.xml` (`"Favoritos|Favorites"`).
 6. `name` en minúsculas, sin tildes ni espacios (`favoritos_agregar_desde_detalle`): testigo lo usa como nombre de la carpeta de evidencia y cambia por `_` lo que no sea letra, número, punto o guion.
 7. Una línea de comentario arriba de cada flow: qué prueba y por qué.
+8. Capturas como evidencia: `takeScreenshot: nombre` (o `antes/paso1`), nunca una ruta con `..` o absoluta. `testigo` las deja en la evidencia del flow (ver [references/maestro.md](references/maestro.md)).
 
 ## Fase 4. Validar
 
