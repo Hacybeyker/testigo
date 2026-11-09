@@ -26,6 +26,10 @@ Para actualizar desde 0.3.0: la misma línea de `install.sh`. Los comandos, `met
 - `logcat.txt` ya no pierde líneas en ráfagas: mientras corre el flow, los buffers de logcat del dispositivo suben a 16 MiB (`logcat -G`) y al terminar cada uno vuelve a su propio tamaño, después de leer el de crashes (achicar un buffer poda lo más viejo). Si el dispositivo no deja cambiarlos, o `logcat -g` no dice cómo estaban (`logcat -G` persiste y no habría cómo devolverlos), lo avisa y sigue sin tocarlos. Si la corrida se corta, los buffers también vuelven: con Ctrl+C, si Maestro falla, o, si la corrida muere sin poder limpiar (`kill -9`), la siguiente lo hace antes de empezar; así no toma los 16 MiB por el tamaño original. Con dos corridas sobre el mismo dispositivo, los devuelve la última en salir.
 - Si una corrida anterior murió sin limpiar y dejó su `adb logcat` abierto, la siguiente lo cierra antes de empezar, para que no escriba líneas repetidas. Cada corrida anota la suya en `~/.testigo/run/` y solo borra esa anotación: dos corridas sobre el mismo dispositivo no se pisan. Solo cierra el de una corrida que ya no existe: nunca el de otra en marcha ni un proceso que no sea el `adb -s <serial> logcat` que esa corrida lanzó. Lo reconoce por cuándo arrancó, no solo por el pid (el sistema lo reusa): un `adb logcat` de otro dispositivo, `pidcat`, un `tail -f logcat.txt` o el servidor de adb con ese pid se quedan como están. También borra el logcat crudo (sin sanitizar) que esa corrida dejó en la carpeta temporal.
 
+### Corregido
+
+- `validar.py` de la skill `testigo-flows` terminaba con `AttributeError` en Python 3.8 después de validar el flow, porque usaba `Path.is_relative_to`, que es de 3.9. Ahora funciona con 3.8.
+
 ## 0.3.0 - 2026-10-20
 
 Para pasar de un zip instalado a mano (como `~/herramientas/testigo-0.2.0`): ejecuta la línea de `install.sh`, luego `~/.local/bin/testigo setup` y borra la carpeta vieja. El instalador y `testigo setup` avisan mientras la otra siga primero en el PATH. Los comandos, la evidencia, `metadata.json` y los códigos de salida son los de 0.2.0.

@@ -158,7 +158,10 @@ for w in warnings:
     print(f"   aviso: {w}")
 for f in files:
     check = subprocess.run(["bash", str(maestro_local), "check-syntax", str(f)], capture_output=True, text=True)
-    rel = Path(f).relative_to(Path.cwd()) if Path(f).is_relative_to(Path.cwd()) else f
+    try:
+        rel = Path(f).relative_to(Path.cwd())  # Path.is_relative_to es de Python 3.9
+    except ValueError:
+        rel = f
     if check.returncode == 0:
         print(f"2. sintaxis OK: {rel}")
     else:
