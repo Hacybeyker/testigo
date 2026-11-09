@@ -142,15 +142,33 @@ En Android 13 o más, la app puede pedir el permiso de notificaciones al abrir: 
 
 Para el caso de error, el mensaje del campo también se encuentra con `text:`, porque Maestro compara el error del campo.
 
-## Esperar al backend
+## Esperar a algo concreto
+
+Maestro no tiene espera fija: `wait`, `sleep` y `waitFor` no existen (`Invalid Command` en 2.11.0). Se espera a que aparezca algo que prueba que el momento llegó, no a que pase el tiempo:
 
 ```yaml
+- tapOn: { id: enviar }
 - extendedWaitUntil:
-    visible: { id: lista_pedidos }
+    visible: { id: lista_pedidos }   # lo que solo existe con la carga terminada, no el shimmer
     timeout: 20000
 ```
 
-Sin esperas fijas. Si el tiempo varía mucho, el problema puede ser el backend de QA: anótalo en `quirks`.
+- Un `visible` que no aparece espera hasta el `timeout` (medido: 19.2 s con `timeout: 20000`) y sale en cuanto aparece. Pon el tiempo del peor caso, no uno corto. Si el tiempo varía mucho, el problema puede ser el backend de QA: anótalo en `quirks`.
+- `notVisible` sale **enseguida si el elemento no está**, también si todavía no apareció. «Espera a que se vaya el spinner» pasa en el acto cuando el spinner aún no se mostró. Espera mejor lo que aparece cuando termina (el `visible` del resultado).
+- No uses `extendedWaitUntil` de un texto que no existe con `optional: true` para «esperar N segundos»: no espera el `timeout` (medido en un emulador: `timeout: 3000` terminó a los 1.6 s y `10000`, a los 4.8 s) y el reporte lo marca como advertencia.
+- Si el caso exige dejar pasar un tiempo sin que cambie nada en pantalla (un token que vence), la app tiene que mostrar el resultado: va a `huecos.md` (un `testTag` o un texto al vencer). Mientras, espera ese resultado con un `timeout` mayor que el vencimiento.
+- Cada toque espera a que la pantalla se asiente, y con un spinner o una cuenta regresiva animándose tarda. `waitToSettleTimeoutMs` acota esa espera en ese toque, pero no la quita (ver «Estados que duran poco»).
+
+## Estados que duran poco: spinner, cuenta regresiva
+
+Maestro no los alcanza a ver de forma fiable. Después de cada toque espera a que la pantalla se asiente, así que el spinner que dispara el toque ya terminó, o está por terminar, cuando llega el siguiente assert. Y entre dos pasos pasan segundos, no un tiempo fijo: en la evidencia de uso, un `assertVisible` del spinner llegó tarde con 400, 1 500 y 2 000 ms de latencia, y con una cotización que vencía a los 5 s pasaron más de 5 s entre ver el aviso y tocar «Confirmar» (`waitToSettleTimeoutMs: 300` no alcanzó; con 10 s sí).
+
+Qué hacer:
+
+1. Verifica el **resultado**, no el estado de paso: el contenido que aparece, el error, el botón otra vez habilitado.
+2. Si el estado tiene que verse, alárgalo en el build o el backend de pruebas (más latencia, un vencimiento de 10 s en vez de 5) para que dure bastante más que lo que tarda Maestro entre pasos. Dilo en `huecos.md`.
+3. Un spinner que bloquea la pantalla se prueba mejor con un test de UI de la app, con el reloj controlado, que con un flow. Si hay que verlo, `adb shell input tap X Y` seguido de `pantalla.py` unos segundos después lo alcanza solo si el estado dura esos segundos.
+4. El snackbar con acción es el caso límite: ver «Mensajes que duran poco».
 
 ## Animaciones y transiciones
 
