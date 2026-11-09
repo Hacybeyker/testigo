@@ -97,6 +97,7 @@ Opciones de los taps: `retryTapIfNoChange`, `waitUntilVisible`, `repeat`, `delay
 - takeScreenshot: paso-final
 ```
 
+- `takeScreenshot` guarda `<nombre>.png` dentro de la carpeta de la corrida. Acepta un nombre (`pantalla_final`) o una subcarpeta (`antes/paso1`), **no** `..` ni una ruta absoluta: Maestro falla con «resolves outside this run's takeScreenshot output folder» (verificado en 2.11.0). `testigo` siempre pasa `--test-output-dir`, así que las capturas quedan solas en la evidencia, en `<flow>/maestro/<flow>/takeScreenshot/`: no hay que copiarlas. Con `maestro-local.sh test` a mano, sin `--test-output-dir`, caen en `~/.maestro/tests/<fecha>/`. Maestro agrega solo una captura (`screenshots/`) cuando un paso falla.
 - `copyTextFrom` copia el texto visible; si no hay, el hint; si no, el content description.
 - `when` acepta `visible`, `notVisible`, `true` (expresión JS) y `platform`.
 - Las rutas de `runFlow` y `runScript` son relativas al archivo que las llama, y deben ser literales: testigo bloquea las dinámicas.
