@@ -56,7 +56,7 @@ Todo lo que lees queda en la conversación y se vuelve a enviar en cada paso. Le
 - **Mapa:** `python3 -I ${CLAUDE_SKILL_DIR}/scripts/mapa.py` da el índice; `mapa.py home movie` da solo esas pantallas. No hagas `cat` del mapa entero.
 - **Código:** busca con `grep -n` y lee el tramo con `sed -n 'inicio,finp'`: la función del caso, sin imports. Un archivo completo solo si tiene menos de 100 líneas. En zsh, pon entre comillas los patrones: `--include='*.kt'`.
 - **Referencias:** lee la que el paso necesita y, si es larga, solo su sección (`grep -n '^## '` y luego `sed -n`). No las cargues por si acaso.
-- **Pantalla:** `python3 -I ${CLAUDE_SKILL_DIR}/scripts/pantalla.py <package>` muestra solo los nodos útiles de la app, sin instalar el driver de Maestro.
+- **Pantalla:** `python3 -I ${CLAUDE_SKILL_DIR}/scripts/pantalla.py <package>` muestra solo los nodos útiles de la app, sin instalar el driver de Maestro. Solo ve lo que está en pantalla, y si el volcado falla lo dice, en vez de leer uno viejo.
 - **Validación sin dispositivo:** `python3 -I ${CLAUDE_SKILL_DIR}/scripts/validar.py <flow>` hace el primer nivel de la fase 4 y responde en pocas líneas.
 - **Corridas:** `testigo run --flows <flow> 2>&1 | sed -n '/^Flows$/,$p;/^Error/p;/^Usage/p'`: solo el resultado, sin el plan, pero con los errores. Si no sale nada, la corrida no empezó: revisa las opciones. Varios flows van con `--flows a --flows b`, no `--flows a b`.
 - **Errores:** las líneas que explican el fallo (`grep -m5 -E 'Failure|Exception|Error'`), nunca el stack trace entero.

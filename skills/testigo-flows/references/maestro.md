@@ -115,6 +115,8 @@ Opciones de los taps: `retryTapIfNoChange`, `waitUntilVisible`, `repeat`, `delay
 
 Lo que no aparece en la jerarquía, un flow no lo puede seleccionar.
 
+`pantalla.py` y `uiautomator dump` solo listan lo que está **en pantalla** en ese momento: el ítem de una lista perezosa que no se ha mostrado no aparece, y que no salga no prueba que la app no lo componga. Si haces un `uiautomator dump` a mano, borra el archivo antes (`adb shell rm -f /sdcard/x.xml`) y comprueba su salida: un dump que falla (`ERROR: null root node returned by UiTestAutomationBridge`, con la pantalla apagada o bloqueada) no escribe nada, y el `cat` siguiente leería el de una vez anterior como si fuera de ahora.
+
 ## No usar
 
 - `assertWithAI`, `assertNoDefectsWithAI`, `extractTextWithAI` y cualquier `*WithAI`: mandan capturas a un servicio de IA. testigo los bloquea.
