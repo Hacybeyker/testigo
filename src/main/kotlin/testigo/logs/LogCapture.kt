@@ -160,16 +160,13 @@ class LogCapture(
      * si otra sigue viva sobre este dispositivo, los necesita agrandados. false si adb no contestó: queda anotado.
      */
     private fun release(): Boolean {
-        val file = store?.file(self)
         val sizes = record.buffers
-        if (sizes.isNotEmpty() && (store == null || !store.othersAlive(file!!))) {
-            if (!restore(sizes)) {
-                update(record.copy(logcatPid = null, logcatStart = null, rawFile = null))
-                return false
-            }
+        if (sizes.isNotEmpty() && store?.othersAlive(store.file(self)) != true && !restore(sizes)) {
+            update(record.copy(logcatPid = null, logcatStart = null, rawFile = null))
+            return false
         }
         record = record.copy(logcatPid = null, logcatStart = null, rawFile = null, buffers = emptyMap())
-        file?.let { store?.delete(it) }
+        store?.delete(store.file(self))
         return true
     }
 
