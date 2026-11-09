@@ -155,7 +155,8 @@ class LogCaptureRecoveryTest {
     @Test
     fun `una corrida que murio sin limpiar no deja el buffer en 16M como tamano original de la siguiente`() {
         val logd = FakeLogd(original)
-        val first = capture(logd)
+        val rawOfFirst = mutableListOf<Path>()
+        val first = capture(logd, rawOfFirst)
         first.start(tmp)
         Cleanup.unregister(first) // kill -9: ningún shutdown hook corre
         val record = store.entries().single().second!!
@@ -168,6 +169,7 @@ class LogCaptureRecoveryTest {
         second.finish(tmp, Redactor(RedactRules.NONE))
 
         assertEquals(original, logd.sizes, "la segunda corrida devolvió los 256 KiB de verdad, no los 16M que encontró")
+        assertFalse(rawOfFirst.single().exists(), "y borró el logcat crudo que dejó la primera")
         assertEquals(emptyList<String>(), records())
     }
 
@@ -183,6 +185,19 @@ class LogCaptureRecoveryTest {
         assertTrue(stale.waitFor(5, TimeUnit.SECONDS), "la captura vieja se cerró")
         assertTrue(outcome.note!!.contains("captura de logcat de una corrida anterior"), outcome.note)
         assertEquals(emptyList<String>(), records(), "al terminar no queda nada")
+    }
+
+    @Test
+    fun `borra el logcat crudo que dejo una corrida muerta, y solo si tiene el nombre de los que crea testigo`() {
+        val raw = tmp.resolve("testigo-logcat-123.txt").also { it.writeText("10-16 15:10:00.000  5555  5555 I MiApp: login con Secreto123") }
+        val other = tmp.resolve("importante.txt").also { it.writeText("no es del runner") }
+        store.write(store.file(deadOwner), CaptureRecord(ownerPid = deadOwner, rawFile = raw.toString()))
+        store.write(store.file(deadOwner - 1), CaptureRecord(ownerPid = deadOwner - 1, rawFile = other.toString()))
+
+        StaleCapture.close(store, "NJ4") { true }
+
+        assertFalse(raw.exists(), "el logcat sin sanitizar de la corrida muerta no se queda en /tmp")
+        assertTrue(other.exists(), "una anotación no puede hacer que se borre cualquier archivo")
     }
 
     @Test

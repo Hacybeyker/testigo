@@ -17,12 +17,15 @@ import kotlin.io.path.writeText
  *
  * Un pid solo no identifica un proceso: el sistema lo reusa. Por eso se anota también cuándo arrancó cada uno
  * ([ownerStart] y [logcatStart], en milisegundos de época; null si el sistema no lo dice).
+ *
+ * [rawFile] es el archivo temporal donde escribe ese logcat, sin sanitizar: si la corrida muere, nadie más lo borraría.
  */
 internal data class CaptureRecord(
     val ownerPid: Long,
     val ownerStart: Long? = null,
     val logcatPid: Long? = null,
     val logcatStart: Long? = null,
+    val rawFile: String? = null,
     val buffers: Map<String, String> = emptyMap(),
 ) {
     fun encode(): String = buildString {
@@ -30,6 +33,7 @@ internal data class CaptureRecord(
         ownerStart?.let { appendLine("ownerStart=$it") }
         logcatPid?.let { appendLine("logcat=$it") }
         logcatStart?.let { appendLine("logcatStart=$it") }
+        rawFile?.let { appendLine("raw=$it") }
         buffers.forEach { (name, size) -> appendLine("buffer.$name=$size") }
     }
 
@@ -43,6 +47,7 @@ internal data class CaptureRecord(
                 ownerStart = long("ownerStart"),
                 logcatPid = long("logcat"),
                 logcatStart = long("logcatStart"),
+                rawFile = values.firstOrNull { it.first == "raw" }?.second,
                 buffers = values.filter { it.first.startsWith("buffer.") }.associate { it.first.removePrefix("buffer.") to it.second },
             )
         }
@@ -152,12 +157,21 @@ internal object StaleCapture {
             if (record != null && Owner.alive(record)) continue
             if (record != null) {
                 closeLogcat(record, serial)?.let { notes += it }
+                deleteRaw(record)
                 if (record.buffers.isNotEmpty() && !running && !restore(record.buffers)) continue
             }
             store.delete(file)
         }
         return notes
     }
+
+    /** El logcat crudo que dejó la corrida muerta. Solo un archivo con el nombre que crea testigo: la anotación es un archivo editable. */
+    private fun deleteRaw(record: CaptureRecord) {
+        val file = record.rawFile?.let { runCatching { Path.of(it) }.getOrNull() } ?: return
+        if (file.fileName?.toString()?.matches(RAW_NAME) == true) runCatching { file.deleteIfExists() }
+    }
+
+    private val RAW_NAME = Regex("""testigo-logcat-.*\.txt""")
 
     private fun closeLogcat(record: CaptureRecord, serial: String): String? {
         val logcatPid = record.logcatPid ?: return null
