@@ -14,6 +14,29 @@ Las listas perezosas solo tienen en la jerarquía los ítems visibles.
 - tapOn: "Términos y condiciones"
 ```
 
+## Toques frágiles
+
+**Un botón pegado al borde inferior, justo después de un scroll.** El toque puede no llegar a la app sin que Maestro falle: el paso pasa y la app no reaccionó (se nota porque no sale el request o no cambia la pantalla). Deja el elemento lejos del borde y deja terminar el scroll, y verifica el efecto del toque:
+
+```yaml
+- scrollUntilVisible:
+    element: { id: restablecer }
+    direction: DOWN
+    centerElement: true        # lo deja al centro, no pegado al borde
+- waitForAnimationToEnd:
+    timeout: 3000              # el scroll sigue un instante por inercia
+- tapOn: { id: restablecer }
+- extendedWaitUntil:           # un toque perdido no da error: verifica lo que debía pasar
+    visible: "Datos restablecidos.*"
+    timeout: 10000
+```
+
+En la evidencia de uso, `centerElement: true` y `waitForAnimationToEnd` resolvieron el caso cada uno por separado; juntos es lo seguro. `validar.py` avisa de un toque justo después de `scrollUntilVisible` sin ninguna de las dos.
+
+**`scrollUntilVisible` rápido.** El `speed` por defecto es 40. Con `speed: 100`, la app tomó el gesto como un toque y abrió el detalle de un ítem de la lista. No subas el `speed`; si la lista es larga, busca un deep link o un id propio del final de la lista. `validar.py` avisa de un `speed` sobre 40.
+
+**Deslizar con adb mientras exploras.** `adb shell input swipe x1 y1 x2 y2 40` (40 ms) se tomó como toque varias veces; con 150 ms funcionó. Usa al menos 150 ms (`input swipe 540 1800 540 600 150`) y comprueba con `pantalla.py` que no se abrió otra pantalla.
+
 ## Una fila entre muchas con el mismo id
 
 ```yaml

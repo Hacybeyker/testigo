@@ -71,7 +71,10 @@ for f in files:
         text = "\n".join(block)
         rel = RELATIVE.search(text)
         if rel and "childOf" not in text:
-            warnings.append(f"{Path(f).name}:{i + 1} {m.group(2)} con {rel.group(1)}")
+            warnings.append(
+                f"{Path(f).name}:{i + 1} {m.group(2)} con {rel.group(1)}. Compara un solo eje y calza con elementos de otras filas: "
+                "un assert así puede pasar sin probar nada. Usa childOf con la fila, o verifica antes el estado contrario."
+            )
 # takeScreenshot solo acepta un nombre o una subcarpeta dentro de la carpeta de la corrida.
 SCREENSHOT = re.compile(r"""takeScreenshot:\s*(?:\{\s*path:\s*)?["']?([^"'}\n#]+)""")
 for f in files:
@@ -84,9 +87,44 @@ for f in files:
             failed = True
             print(f"1. captura FALLA: {Path(f).name}:{number} takeScreenshot con ruta fuera de la carpeta de la corrida ({target}). "
                   "Maestro la rechaza al correr: usa un nombre (paso1) o una subcarpeta (antes/paso1).")
+
+def top_level_steps(text):
+    """Los comandos de primer nivel del flow (después de `---`), cada uno con su línea y su texto."""
+    lines = text.splitlines()
+    start = next((i + 1 for i, line in enumerate(lines) if line.strip() == "---"), 0)
+    steps = []
+    for number in range(start, len(lines)):
+        line = lines[number]
+        if re.match(r"-(\s|$)", line):
+            steps.append([number + 1, [line]])
+        elif steps and (not line.strip() or line[0] in " \t"):
+            steps[-1][1].append(line)
+    return [(number, "\n".join(body)) for number, body in steps]
+
+
+# Toques frágiles: un scroll rápido se toma como toque, y un toque justo después de un scroll, pegado al borde, no llega.
+DEFAULT_SPEED = 40
+TAPS = ("tapOn", "longPressOn", "doubleTapOn")
+for f in files:
+    steps = top_level_steps(Path(f).read_text(encoding="utf-8"))
+    names = [(re.match(r"-\s*(\w+)", body) or [None, ""])[1] for _, body in steps]
+    for index, (number, body) in enumerate(steps):
+        if names[index] == "scrollUntilVisible":
+            speed = re.search(r"speed:\s*(\d+)", body)
+            if speed and int(speed.group(1)) > DEFAULT_SPEED:
+                warnings.append(
+                    f"{Path(f).name}:{number} scrollUntilVisible con speed {speed.group(1)}, sobre el 40 por defecto: un scroll rápido "
+                    "puede tomarse como un toque y abrir un ítem de la lista. Bájalo, o quita el speed."
+                )
+        if names[index] in TAPS and index > 0 and names[index - 1] == "scrollUntilVisible":
+            if not re.search(r"centerElement:\s*true", steps[index - 1][1]):
+                warnings.append(
+                    f"{Path(f).name}:{number} {names[index]} justo después de scrollUntilVisible, sin centerElement: true ni "
+                    "waitForAnimationToEnd entre los dos: un toque pegado al borde inferior puede no llegar a la app sin dar error."
+                )
+
 for w in warnings:
-    print(f"   aviso: {w}. Compara un solo eje y calza con elementos de otras filas: un assert así puede pasar"
-          " sin probar nada. Usa childOf con la fila, o verifica antes el estado contrario.")
+    print(f"   aviso: {w}")
 for f in files:
     check = subprocess.run(["bash", str(maestro_local), "check-syntax", str(f)], capture_output=True, text=True)
     rel = Path(f).relative_to(Path.cwd()) if Path(f).is_relative_to(Path.cwd()) else f
