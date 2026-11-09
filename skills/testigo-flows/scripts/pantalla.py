@@ -5,6 +5,9 @@ Lee el árbol de accesibilidad con `adb shell uiautomator dump`, el mismo que us
 sin instalar el driver de Maestro. Deja solo los nodos de la app que tienen texto, content description,
 id, clic o estado.
 
+`uiautomator dump` solo lista lo que está en pantalla en ese momento: un ítem de una lista perezosa que no se ha mostrado, o
+algo que se compone al hacer scroll, no aparece. Que no salga aquí no prueba que la app no lo tenga.
+
 Uso: python3 -I pantalla.py <package> [--sin-texto] [--serial ID]
   --sin-texto  cambia cada texto por su largo: para apps con datos sensibles en pantalla.
 """
@@ -22,13 +25,29 @@ if "--serial" in args:
     adb += ["-s", args[args.index("--serial") + 1]]
 
 remote = "/sdcard/testigo-pantalla.xml"
-subprocess.run(adb + ["shell", "uiautomator", "dump", remote], capture_output=True)
-dump = subprocess.run(adb + ["shell", "cat", remote], capture_output=True, text=True).stdout
-subprocess.run(adb + ["shell", "rm", "-f", remote], capture_output=True)
+
+
+def adb_run(*command):
+    return subprocess.run(adb + list(command), capture_output=True, text=True)
+
+
+# Un volcado que falla no escribe nada, y el `cat` siguiente leería el de una vez anterior como si fuera de ahora:
+# se borra antes del dump y se comprueba su salida antes de leer nada.
+adb_run("shell", "rm", "-f", remote)
+dumped = adb_run("shell", "uiautomator", "dump", remote)
+message = (dumped.stdout + dumped.stderr).strip()
+if dumped.returncode != 0 or "dumped to" not in message:
+    adb_run("shell", "rm", "-f", remote)
+    sys.exit(
+        f"uiautomator dump falló ({message or 'sin salida'}). No leí ningún volcado anterior. "
+        "¿Está el dispositivo conectado, con la pantalla encendida y desbloqueado?"
+    )
+dump = adb_run("shell", "cat", remote).stdout
+adb_run("shell", "rm", "-f", remote)
 
 start = dump.find("<?xml")
 if start < 0:
-    sys.exit("No pude leer la pantalla con uiautomator dump. ¿Está el dispositivo conectado y desbloqueado?")
+    sys.exit("El volcado de uiautomator no trae la jerarquía. ¿Está el dispositivo conectado y desbloqueado?")
 root = ET.fromstring(dump[start:])
 
 
