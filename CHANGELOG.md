@@ -2,7 +2,7 @@
 
 Los cambios importantes de `testigo`, de la versión más nueva a la más vieja. El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y las versiones, [Semantic Versioning](https://semver.org/lang/es/).
 
-## Sin publicar
+## 0.4.0 - 2026-11-09
 
 Para actualizar desde 0.3.0: la misma línea de `install.sh`. Los comandos, `metadata.json` (solo suma campos) y los códigos de salida son los de 0.3.0; la novedad es que un dispositivo que no responde ahora termina la corrida con código 2.
 

@@ -511,12 +511,12 @@ Cada versión lleva `bin/`, `lib/`, `tools/` (bundletool), el README, el `CHANGE
 **A mano.** Se descomprime el archivo donde se quiera y se ejecuta su `bin/testigo setup`:
 
 ```bash
-shasum -a 256 -c testigo-0.3.0.zip.sha256              # verifica que el zip llegó entero
-unzip testigo-0.3.0.zip -d ~/herramientas
-~/herramientas/testigo-0.3.0/bin/testigo setup         # prepara la máquina y deja testigo en el PATH
+shasum -a 256 -c testigo-0.4.0.zip.sha256              # verifica que el zip llegó entero
+unzip testigo-0.4.0.zip -d ~/herramientas
+~/herramientas/testigo-0.4.0/bin/testigo setup         # prepara la máquina y deja testigo en el PATH
 ```
 
-En Windows (todavía sin probar) se descomprime igual, se agrega `testigo-0.3.0\bin` al PATH y el comando es `testigo` (`bin\testigo.bat`).
+En Windows (todavía sin probar) se descomprime igual, se agrega `testigo-0.4.0\bin` al PATH y el comando es `testigo` (`bin\testigo.bat`).
 
 **Actualizar.** Con `install.sh`, la misma línea: deja la versión nueva al lado de la anterior, mueve `cli/current` y borra las más viejas, así que quedan la activa y la anterior. La terminal ya apunta a `cli/current`, y si `testigo` es el de esta instalación y `~/.testigo/env.sh` ya usa `cli/current`, el instalador termina con «Listo: tu terminal ya usa esta versión». Si otro `testigo` va antes en el PATH (un zip a mano, o la carpeta de una versión que puso un setup anterior a la 0.3.0), lo avisa y pide `testigo setup` con la ruta completa. Para volver a la anterior, `TESTIGO_VERSION=<versión>`. Una instalación a mano se actualiza borrando su carpeta y descomprimiendo el archivo nuevo en el mismo lugar; con otra carpeta, su `bin/testigo setup` actualiza el PATH. El estado del runner, el Java descargado y la configuración de la terminal viven aparte, en `~/.testigo/`, y no cambian. Detalle en la [guía](GUIA.md#actualizar-el-cli).
 

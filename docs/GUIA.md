@@ -56,7 +56,7 @@ curl -fsSL https://raw.githubusercontent.com/Hacybeyker/testigo/HEAD/install.sh 
 ```
 
 ```
-Descargando testigo-0.3.0.tar.gz de github.com/Hacybeyker/testigo…
+Descargando testigo-0.4.0.tar.gz de github.com/Hacybeyker/testigo…
 ✔ testigo 0.3.0 en ~/.testigo/cli/0.3.0
 ✔ ~/.local/bin/testigo → ~/.testigo/cli/current/bin/testigo
 ✔ testigo version 0.3.0
@@ -66,7 +66,7 @@ Siguiente: ~/.local/bin/testigo setup
   Revisa Java, Maestro, el Android SDK y el PATH, y te pregunta antes de cambiar algo.
 ```
 
-El instalador baja la última versión de [Releases](https://github.com/Hacybeyker/testigo/releases) por HTTPS y verifica su SHA-256: si no coincide, no instala nada. Deja cada versión en su carpeta, `~/.testigo/cli/<versión>`, con `~/.testigo/cli/current` apuntando a la activa y el comando `testigo` en `~/.local/bin`. No usa sudo, no edita el perfil de tu terminal y no envía nada: el PATH lo configura `testigo setup`, en el paso 3. Necesita `curl` y `tar` (o `unzip`); si falta alguno, dice cómo instalarlo. Si quieres leerlo antes de correrlo, es [`install.sh`](../install.sh). Cada release trae además `SHA256SUMS` y la attestation de sus archivos, firmada por el workflow que los compiló: con [GitHub CLI](https://cli.github.com), `gh attestation verify testigo-0.3.0.tar.gz -R Hacybeyker/testigo` confirma que el archivo salió de este repositorio.
+El instalador baja la última versión de [Releases](https://github.com/Hacybeyker/testigo/releases) por HTTPS y verifica su SHA-256: si no coincide, no instala nada. Deja cada versión en su carpeta, `~/.testigo/cli/<versión>`, con `~/.testigo/cli/current` apuntando a la activa y el comando `testigo` en `~/.local/bin`. No usa sudo, no edita el perfil de tu terminal y no envía nada: el PATH lo configura `testigo setup`, en el paso 3. Necesita `curl` y `tar` (o `unzip`); si falta alguno, dice cómo instalarlo. Si quieres leerlo antes de correrlo, es [`install.sh`](../install.sh). Cada release trae además `SHA256SUMS` y la attestation de sus archivos, firmada por el workflow que los compiló: con [GitHub CLI](https://cli.github.com), `gh attestation verify testigo-0.4.0.tar.gz -R Hacybeyker/testigo` confirma que el archivo salió de este repositorio.
 
 | Variable | Para qué |
 | --- | --- |
@@ -82,14 +82,14 @@ La variable va antes de `bash`: `curl -fsSL … | TESTIGO_VERSION=0.2.0 bash`.
 Con el `.tar.gz` (o el `.zip`) y su `.sha256` de [Releases](https://github.com/Hacybeyker/testigo/releases), o los que generas al compilar, y una copia de [`install.sh`](../install.sh):
 
 ```bash
-TESTIGO_ARCHIVE=testigo-0.3.0.tar.gz sh install.sh     # verifica el SHA-256 e instala como la línea de arriba
+TESTIGO_ARCHIVE=testigo-0.4.0.tar.gz sh install.sh     # verifica el SHA-256 e instala como la línea de arriba
 ```
 
 Si prefieres no usar el instalador, descomprímelo donde quieras y, en el paso 3, ejecuta su `bin/testigo setup` con la ruta completa:
 
 ```bash
-shasum -a 256 -c testigo-0.3.0.zip.sha256              # el zip llegó entero
-unzip testigo-0.3.0.zip -d ~/herramientas              # cualquier carpeta sirve
+shasum -a 256 -c testigo-0.4.0.zip.sha256              # el zip llegó entero
+unzip testigo-0.4.0.zip -d ~/herramientas              # cualquier carpeta sirve
 ```
 
 ### Compilarlo desde el código
@@ -99,7 +99,7 @@ Para compilar sí hace falta Java 17 o más (`./gradlew` lo usa):
 ```bash
 cd testigo
 ./gradlew build                                                            # tests, y el .tar.gz y el .zip en build/distributions/
-TESTIGO_ARCHIVE=build/distributions/testigo-0.4.0-dev.tar.gz sh install.sh  # instálalo como uno publicado
+TESTIGO_ARCHIVE=build/distributions/testigo-0.4.0.tar.gz sh install.sh  # instálalo como uno publicado
 ```
 
 ### Actualizar el CLI
@@ -222,7 +222,7 @@ export MAESTRO_CLI_ANALYSIS_NOTIFICATION_DISABLED=true
 
 `testigo` siempre ejecuta Maestro con esas variables. Hacen falta en la terminal solo si usas `maestro` directamente, por ejemplo `maestro hierarchy`.
 
-**En Windows**, `testigo setup` todavía solo revisa. Instala Java 17 o más, Maestro y Android Studio a mano, descomprime el zip de [Releases](https://github.com/Hacybeyker/testigo/releases) (por ejemplo en `C:\herramientas`) y agrega `C:\herramientas\testigo-0.3.0\bin` a la variable `Path` en *Configuración › Sistema › Información › Configuración avanzada del sistema › Variables de entorno*. Windows todavía no se ha probado.
+**En Windows**, `testigo setup` todavía solo revisa. Instala Java 17 o más, Maestro y Android Studio a mano, descomprime el zip de [Releases](https://github.com/Hacybeyker/testigo/releases) (por ejemplo en `C:\herramientas`) y agrega `C:\herramientas\testigo-0.4.0\bin` a la variable `Path` en *Configuración › Sistema › Información › Configuración avanzada del sistema › Variables de entorno*. Windows todavía no se ha probado.
 
 ### Comprobar
 
