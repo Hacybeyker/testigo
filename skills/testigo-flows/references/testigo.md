@@ -116,8 +116,8 @@ Maestro no corre un comando de shell a mitad de un flow, así que «cuántas vec
 
    ```sh
    grep -n -A4 '\[confirmar_pago\]' evidence/<corrida>/<flow>/network-steps.txt
-   # cuántos POST /pagos desde ese paso hasta el final del flow
-   awk '/\[confirmar_pago\]/{on=1} on && /#[0-9]+ POST \/pagos/{n++} END{print n+0}' evidence/<corrida>/<flow>/network-steps.txt
+   # cuántos POST /pagos desde ese paso hasta el final del flow (sin contar «Fuera de los pasos», que va al final del archivo)
+   awk '/\[confirmar_pago\]/{on=1} /^Fuera de los pasos/{on=0} on && /#[0-9]+ POST \/pagos/{n++} END{print n+0}' evidence/<corrida>/<flow>/network-steps.txt
    ```
 
 Cómo leerlo:
