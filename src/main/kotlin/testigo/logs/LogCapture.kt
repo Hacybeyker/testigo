@@ -67,7 +67,7 @@ class LogCapture(
     private val self = ProcessHandle.current().pid()
 
     /** Lo que esta captura le debe al dispositivo: sus buffers originales y su `adb logcat`. */
-    private var record = CaptureRecord(ownerPid = self)
+    private var record = CaptureRecord(ownerPid = self, ownerStart = Identity.startOf(ProcessHandle.current()))
     private var process: Process? = null
     private var raw: Path? = null
     private val notes = mutableListOf<String>()
@@ -83,14 +83,14 @@ class LogCapture(
 
     private fun begin() {
         Cleanup.register(this) { abort() }
-        store?.let { notes += StaleCapture.close(it, ::restore) }
+        store?.let { notes += StaleCapture.close(it, serial, ::restore) }
         enlargeBuffer()
         runner.run(adb(listOf("logcat", "-c")), 30.seconds)
         val filter = if (uid != null && (sdk ?: 0) >= UID_FILTER_MIN_SDK) listOf("--uid=$uid") else emptyList()
         val file = Files.createTempFile("testigo-logcat-", ".txt").also { raw = it }
         val started = startProcess(adb(listOf("logcat", "-v", "threadtime") + filter), file)
         process = started
-        update(record.copy(logcatPid = started.pid()))
+        update(record.copy(logcatPid = started.pid(), logcatStart = Identity.startOf(started.toHandle())))
     }
 
     override fun finish(dir: Path, redactor: Redactor): LogOutcome {
@@ -163,11 +163,11 @@ class LogCapture(
         val sizes = record.buffers
         if (sizes.isNotEmpty() && (store == null || !store.othersAlive(file!!))) {
             if (!restore(sizes)) {
-                update(record.copy(logcatPid = null))
+                update(record.copy(logcatPid = null, logcatStart = null))
                 return false
             }
         }
-        record = record.copy(logcatPid = null, buffers = emptyMap())
+        record = record.copy(logcatPid = null, logcatStart = null, buffers = emptyMap())
         file?.let { store?.delete(it) }
         return true
     }
