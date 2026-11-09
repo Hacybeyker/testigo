@@ -191,6 +191,7 @@ evidence/20261016-143012_PROJ-123_a1b2c3d/    fecha, ticket del branch y commit
     ├── report.html    el reporte de Maestro, paso a paso, sin recursos externos
     ├── video.mp4      la pantalla, también si el flow falló
     ├── network.txt    cada request y response, con el JSON formateado
+    ├── network-steps.txt  las llamadas agrupadas por el paso del flow que las disparó
     ├── logcat.txt     los logs de la app
     └── crash.txt      solo si la app se cerró
 ```

@@ -12,6 +12,8 @@ Para actualizar desde 0.3.0: la misma línea de `install.sh`. Los comandos, `met
 - Detecta si el dispositivo se reinició, o dejó de responder, antes o durante un flow (con el `boot_id` del kernel). El flow queda anotado (`device_note` en `metadata.json`, sección *Dispositivo* de `summary.md`), un fallo lo dice primero y no se toma como un defecto de la app.
 - `--flow-timeout` y `defaults.flow_timeout_s`: tiempo máximo de cada flow, de 30 a 3600 segundos. `metadata.json` agrega `timed_out` por flow y `flow_timeout_s` en las opciones.
 
+- `network-steps.txt` en la evidencia de cada flow con red: cada paso de Maestro (de `commands.json`) con las llamadas de Chucker que salieron mientras corría, para contar las llamadas desde un toque concreto sin partir el flow. `testigo` mide el desfase entre el reloj del dispositivo y el de la máquina al empezar el flow y lo dice en el archivo. Sin bodies ni query strings; un `label` en el paso lo hace fácil de encontrar.
+
 ### Cambiado
 
 - El tiempo máximo de cada flow por defecto baja de 15 a 10 minutos: un Maestro colgado detenía la corrida el doble de lo necesario. Pasado el tiempo, también se cierran los procesos que lanzó, y el flow siguiente reinstala el driver de Maestro (lo mismo tras un reinicio del dispositivo).

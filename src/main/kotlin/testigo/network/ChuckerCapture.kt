@@ -27,6 +27,12 @@ data class NetworkOutcome(
     val note: String? = null,
     /** Las alertas del resumen, en una línea cada una, para mostrarlas en la consola. */
     val highlights: List<String> = emptyList(),
+    /** Las llamadas del flow, para cruzarlas con los pasos de Maestro. */
+    val calls: List<NetworkCall> = emptyList(),
+    /** Desfase entre el reloj del dispositivo y el de la máquina, medido al empezar el flow. */
+    val clock: ClockOffset? = null,
+    /** `network-steps.txt`: las llamadas agrupadas por paso del flow. */
+    val steps: Path? = null,
 )
 
 /** Captura de red alrededor de un flow. Una interfaz para poder probar sin dispositivo. */
@@ -61,11 +67,22 @@ class ChuckerCapture(
     /** Ejecuta un comando y guarda su salida binaria en el archivo. true si terminó bien. */
     private val copy: (List<String>, Path) -> Boolean = ::execOut,
     private val sleep: (Long) -> Unit = { Thread.sleep(it) },
+    /** La hora de esta máquina, para medir el desfase con el reloj del dispositivo. */
+    private val hostClock: () -> Long = System::currentTimeMillis,
 ) : NetworkCollector {
     private var since: Long? = null
+    private var clock: ClockOffset? = null
 
+    /**
+     * Guarda la hora del dispositivo y su desfase con la de esta máquina: con la hora de aquí justo antes y después de
+     * preguntarla, el reloj del dispositivo se compara con el punto medio, y la incertidumbre es media vuelta de adb.
+     */
     override fun start() {
-        since = deviceMillis()
+        val before = hostClock()
+        val device = deviceMillis()
+        val after = hostClock()
+        since = device?.first
+        clock = device?.let { (millis, precision) -> ClockOffset(millis - (before + after) / 2, (after - before) / 2 + precision) }
     }
 
     override fun finish(dir: Path, redactor: Redactor): NetworkOutcome {
@@ -110,7 +127,10 @@ class ChuckerCapture(
             val summaryFile = dir.resolve("network-summary.json").also { it.writeText(Json.write(summary.toJson())) }
             val note = if (since == null) "no se pudo leer la hora del dispositivo: el HAR puede traer llamadas de flows anteriores" else null
             raw.listDirectoryEntries().forEach { RawEvidence.keepOrDelete(it, dir, it.fileName.toString(), keepRaw) }
-            return NetworkOutcome(har, text, summaryFile, summary, note, summary.alertLines())
+            val calls = transactions.mapNotNull { t ->
+                t.requestDate?.let { NetworkCall(t.id, t.method ?: "?", (t.path ?: "").substringBefore('?'), t.responseCode, t.durationMs, it, t.failed) }
+            }
+            return NetworkOutcome(har, text, summaryFile, summary, note, summary.alertLines(), calls = calls, clock = clock)
         } catch (e: java.sql.SQLException) {
             return NetworkOutcome(note = "no se pudo leer la base de Chucker: ${e.message}")
         } finally {
@@ -120,11 +140,14 @@ class ChuckerCapture(
         }
     }
 
-    /** Hora del dispositivo en ms. `date +%s%3N` no existe en todos los Android: si falla, segundos × 1000. */
-    private fun deviceMillis(): Long? {
+    /**
+     * Hora del dispositivo en ms y su precisión. `date +%s%3N` no existe en todos los Android: si falla, segundos × 1000,
+     * con 500 ms de precisión.
+     */
+    private fun deviceMillis(): Pair<Long, Long>? {
         val millis = runner.run(adb("shell", "date", "+%s%3N"), 10.seconds).stdout.trim().toLongOrNull()
-        if (millis != null && millis > 100_000_000_000L) return millis
-        return runner.run(adb("shell", "date", "+%s"), 10.seconds).stdout.trim().toLongOrNull()?.times(1000)
+        if (millis != null && millis > 100_000_000_000L) return millis to 0L
+        return runner.run(adb("shell", "date", "+%s"), 10.seconds).stdout.trim().toLongOrNull()?.let { it * 1000 to 500L }
     }
 
     /** Espera hasta que el tamaño de la base y de su WAL no cambie entre dos lecturas (máximo ~10 s). */

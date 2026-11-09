@@ -5,6 +5,7 @@ import testigo.android.DeviceGuard
 import testigo.logs.LogCollector
 import testigo.network.NetworkCollector
 import testigo.network.NetworkOutcome
+import testigo.network.StepNetwork
 import testigo.process.Cleanup
 import testigo.redact.EvidenceFiles
 import testigo.redact.EvidenceStatus
@@ -270,8 +271,9 @@ class FlowExecutor(
         val logOutcome = logCollector?.finish(dir, redactor)
         logOutcome?.note?.let { progress("  ! logcat: $it") }
         val networkOutcome = networkCollector?.finish(dir, redactor)
+        var stepsFile: Path? = null
         val consoleText = try {
-            collect(dir, work, redactor)
+            collect(dir, work, redactor).also { stepsFile = stepNetwork(name, networkOutcome, dir, work, redactor) }
         } finally {
             deleteTree(work)
             Cleanup.unregister(work)
@@ -309,7 +311,7 @@ class FlowExecutor(
             logcat = logOutcome?.logcat,
             crash = logOutcome?.crash,
             crashFile = logOutcome?.crashFile,
-            network = networkOutcome,
+            network = networkOutcome?.copy(steps = stepsFile),
             leaks = scan?.leaks.orEmpty(),
             unscanned = scan?.unscanned.orEmpty(),
             attempt = attempt,
@@ -359,6 +361,19 @@ class FlowExecutor(
         return text
     }
 
+    /**
+     * `network-steps.txt`: las llamadas de red agrupadas por el paso de Maestro que corría cuando salieron. Necesita los dos
+     * lados (la red y `commands.json`); sin alguno, el flow queda sin esta vista y no es un error.
+     */
+    private fun stepNetwork(name: String, network: NetworkOutcome?, dir: Path, work: Path, redactor: Redactor): Path? {
+        if (network == null || network.calls.isEmpty()) return null
+        val commands = Files.walk(work.resolve(RAW_OUTPUT)).use { paths ->
+            paths.filter { it.fileName.toString() == COMMANDS_FILE }.findFirst().orElse(null)
+        } ?: return null
+        val text = StepNetwork.render(name, StepTimeline.parse(EvidenceFiles.read(commands)), network.calls, network.clock) ?: return null
+        return dir.resolve("network-steps.txt").also { it.writeText(redactor.text(text)) }
+    }
+
     private fun createRunDir(root: Path, base: String): Path {
         root.createDirectories()
         // La evidencia trae tokens y datos de la app: nunca debe terminar en un commit, aunque falte en el .gitignore.
@@ -371,6 +386,7 @@ class FlowExecutor(
 
     companion object {
         private const val MAESTRO_DEVICE_LOG = "device-logcat.txt"
+        private const val COMMANDS_FILE = "commands.json"
         internal const val GITIGNORE = "# Generado por testigo: la evidencia no se sube al repo.\n*\n"
         private const val RAW_OUTPUT = "output"
         private const val RAW_CONSOLE = "console.txt"

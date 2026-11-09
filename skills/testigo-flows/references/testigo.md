@@ -68,6 +68,7 @@ evidence/<fecha>_<ticket>_<commit>/
     ├── report.html  reporte de Maestro paso a paso
     ├── video.mp4
     ├── network.txt  cada request y response (o network.har)
+    ├── network-steps.txt  las llamadas de red agrupadas por el paso del flow
     ├── logcat.txt
     └── crash.txt    solo si la app se cerró
 ```
@@ -93,7 +94,37 @@ En este orden, y solo lo necesario:
    grep -A1 -E '^#[0-9]+ ' network.txt | grep -v '^--$' | sed 's/?.*//'
    ```
 
+Para saber qué llamó cada paso, no leas `network.txt` entero: ver «Contar las llamadas desde un paso».
+
 No abras `video.mp4` ni `report.html` para elegir selectores: para eso está la jerarquía.
+
+## Contar las llamadas desde un paso
+
+Maestro no corre un comando de shell a mitad de un flow, así que «cuántas veces llamó la app a X desde este toque» no se mide dentro del flow, y tampoco hace falta partirlo en dos. `network-steps.txt` cruza la hora de cada paso con la de cada request y lista, bajo cada paso, las llamadas que salieron mientras corría.
+
+1. Ponle `label` al paso que importa; sale entre corchetes en el archivo:
+
+   ```yaml
+   - tapOn:
+       text: "Confirmar"
+       label: confirmar_pago
+   ```
+
+2. Corre el flow con red (perfil `dev` o `evidencia`; la app debe traer Chucker).
+3. Lee solo ese tramo, con método, status y ruta (sin bodies ni query):
+
+   ```sh
+   grep -n -A4 '\[confirmar_pago\]' evidence/<corrida>/<flow>/network-steps.txt
+   # cuántos POST /pagos desde ese paso hasta el final del flow
+   awk '/\[confirmar_pago\]/{on=1} on && /#[0-9]+ POST \/pagos/{n++} END{print n+0}' evidence/<corrida>/<flow>/network-steps.txt
+   ```
+
+Cómo leerlo:
+
+- La llamada cae en el paso que corría cuando **salió**. Un toque que dispara un request lo hace durante el propio paso, porque Maestro espera a que la pantalla se asiente. Un request diferido (un polling, un reintento) cae en el paso que corra entonces.
+- La tercera línea del archivo dice el desfase entre el reloj del dispositivo y el de la máquina, con su incertidumbre. Una llamada pegada al borde de un paso puede caer en el vecino: si el conteo importa, deja un `waitForAnimationToEnd` o un `assertVisible` entre el paso y lo siguiente.
+- *Fuera de los pasos* son las llamadas que no caben en ninguno (antes de empezar o mucho después de terminar).
+- Sin Chucker, o con `--network none`, no hay archivo. Si la app escribe cada llamada en logcat, `logcat.txt` sirve, con la hora del dispositivo; la hora de cada paso está en `maestro/<flow>/commands.json` (`timestamp`, en milisegundos y hora de la máquina).
 
 ## Problemas del dispositivo
 

@@ -8,6 +8,10 @@ import testigo.config.RedactConfig
 import testigo.config.RedactPreset
 import testigo.logs.LogCollector
 import testigo.logs.LogOutcome
+import testigo.network.ClockOffset
+import testigo.network.NetworkCall
+import testigo.network.NetworkCollector
+import testigo.network.NetworkOutcome
 import testigo.redact.EvidenceStatus
 import testigo.redact.Leak
 import testigo.redact.RedactRules
@@ -67,6 +71,7 @@ class FlowExecutorTest {
             mkdir -p "${'$'}out/2026-10-16_143012/${'$'}name"
             echo "log" > "${'$'}out/2026-10-16_143012/maestro.log"
             echo "{}" > "${'$'}out/2026-10-16_143012/${'$'}name/commands.json"
+            case "${'$'}name" in *pasos*) cp "${'$'}(dirname "${'$'}0")/commands-pasos.json" "${'$'}out/2026-10-16_143012/${'$'}name/commands.json";; esac
             mkdir -p "${'$'}out/2026-10-16_143012/${'$'}name/logs"
             echo "logs de otras apps" > "${'$'}out/2026-10-16_143012/${'$'}name/logs/device-logcat.txt"
             echo "<html>reporte</html>" > "${'$'}report"
@@ -427,6 +432,53 @@ class FlowExecutorTest {
         assertFalse(calls[1].contains("--no-reinstall-driver"), "tras un reinicio se reinstala el driver")
         assertFalse(calls[2].contains("--no-reinstall-driver"), "y también tras un flow que lo anotó")
         assertEquals(ExitCode.FLOW_FAILED, result.exitCode)
+    }
+
+    @Test
+    fun `con red y pasos de Maestro deja network-steps con cada llamada bajo su paso`() {
+        val script = fakeMaestro()
+        script.resolveSibling("commands-pasos.json").writeText(CommandsFixture.JSON)
+        val calls = listOf(
+            NetworkCall(1, "GET", "/config", 200, 80, requestMs = 1_600, failed = false),
+            NetworkCall(2, "POST", "/auth/login", 200, 432, requestMs = 3_600, failed = false),
+        )
+        val network = object : NetworkCollector {
+            override fun start() = Unit
+
+            override fun finish(dir: Path, redactor: Redactor) = NetworkOutcome(calls = calls, clock = ClockOffset(100, 40))
+        }
+        val executor = FlowExecutor(MaestroCli(script), network = { network }, rules = RedactRules.DEFAULT)
+
+        val result = executor.run(listOf(flow("pasos.yaml", null)), "emulator-5554", mapOf("PASSWORD" to "Secreto123"), tmp.resolve("evidence"), "com.empresa.app")
+
+        val steps = result.flows.single().network!!.steps!!
+        assertEquals(result.dir.resolve("pasos/network-steps.txt"), steps)
+        val text = steps.readText()
+        assertTrue("paso 2 · launchApp · +0.0 s · 2.0 s · 1 llamada\n  #1 GET /config" in text.replace("\n    #1", "\n  #1"), text)
+        assertTrue("    #2 POST /auth/login → 200 · 432 ms · +100 ms" in text, text)
+        assertFalse(text.contains("Secreto123"), text)
+    }
+
+    @Test
+    fun `sin commands json de Maestro 2 o sin llamadas no hay network-steps`() {
+        val script = fakeMaestro()
+        val withCalls = object : NetworkCollector {
+            override fun start() = Unit
+
+            override fun finish(dir: Path, redactor: Redactor) =
+                NetworkOutcome(calls = listOf(NetworkCall(1, "GET", "/a", 200, 5, requestMs = 10, failed = false)))
+        }
+        val noCalls = object : NetworkCollector {
+            override fun start() = Unit
+
+            override fun finish(dir: Path, redactor: Redactor) = NetworkOutcome()
+        }
+
+        val first = FlowExecutor(MaestroCli(script), network = { withCalls }).run(listOf(flow("ok.yaml", null)), "emulator-5554", emptyMap(), tmp.resolve("e1"), "com.empresa.app")
+        val second = FlowExecutor(MaestroCli(script), network = { noCalls }).run(listOf(flow("ok.yaml", null)), "emulator-5554", emptyMap(), tmp.resolve("e2"), "com.empresa.app")
+
+        assertNull(first.flows.single().network!!.steps, "el commands.json de la prueba es {}")
+        assertNull(second.flows.single().network!!.steps)
     }
 
     companion object {

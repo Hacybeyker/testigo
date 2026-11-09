@@ -150,7 +150,12 @@ class ChuckerTest {
         }
     }
 
-    private fun capture(device: FakeDevice, keepRaw: Boolean = false, format: NetworkFormat = NetworkFormat.TXT) = ChuckerCapture(
+    private fun capture(
+        device: FakeDevice,
+        keepRaw: Boolean = false,
+        format: NetworkFormat = NetworkFormat.TXT,
+        hostClock: () -> Long = System::currentTimeMillis,
+    ) = ChuckerCapture(
         adb = Path.of("/sdk/platform-tools/adb"),
         serial = "emulator-5554",
         packageName = "com.empresa.app",
@@ -162,7 +167,26 @@ class ChuckerTest {
         format = format,
         copy = device::copy,
         sleep = {},
+        hostClock = hostClock,
     )
+
+    @Test
+    fun `mide el desfase del reloj del dispositivo con la hora de la maquina antes y despues de preguntarla`() {
+        val db = chuckerDb()
+        val device = FakeDevice(db.parent, "chucker.db\n")
+        val hostTimes = ArrayDeque(listOf(10_000L, 10_200L)) // la consulta de adb tardó 200 ms
+        val capture = capture(device, hostClock = { hostTimes.removeFirst() })
+
+        capture.start()
+        val outcome = capture.finish(Files.createDirectories(tmp.resolve("evidence/flow")), redactor)
+
+        // El dispositivo dijo 5000: la máquina estaba en 10100 (punto medio), así que va 5100 ms atrás. La incertidumbre
+        // es media vuelta de adb (100 ms) más 500 ms, porque el `date` de este dispositivo simulado no da milisegundos
+        // y la hora sale en segundos.
+        assertEquals(ClockOffset(deviceMinusHostMs = -5_100, uncertaintyMs = 600), outcome.clock)
+        assertEquals(2, outcome.calls.size)
+        assertTrue(outcome.calls.all { it.requestMs >= 5_000 && '?' !in it.path }, outcome.calls.toString())
+    }
 
     @Test
     fun `copia la base, filtra por la hora del dispositivo y por defecto escribe el texto y el resumen`() {

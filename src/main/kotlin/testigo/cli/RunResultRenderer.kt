@@ -55,7 +55,7 @@ object RunResultRenderer {
                     if (network.highlights.size > MAX_HIGHLIGHTS) {
                         appendLine("        … y ${network.highlights.size - MAX_HIGHLIGHTS} más")
                     }
-                    listOfNotNull(network.text, network.har).forEach { appendLine("        ${it.displayFrom(cwd)}") }
+                    listOfNotNull(network.text, network.har, network.steps).forEach { appendLine("        ${it.displayFrom(cwd)}") }
                 }
                 network.note?.let { appendLine("      ! red: $it") }
             }
