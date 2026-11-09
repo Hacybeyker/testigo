@@ -1,6 +1,6 @@
 # testigo: lo que revisa y cómo leer lo que deja
 
-Según el código de testigo 0.2.0.
+Según el código de testigo 0.4.0.
 
 ## Qué flows ejecuta
 
@@ -21,7 +21,7 @@ testigo run --tags smoke                        # todos los de un tag
 testigo doctor                                  # si algo del entorno falla
 ```
 
-Otras opciones útiles: `--flows` se repite, una vez por ruta (`--flows flows/a --flows flows/b`; `--flows a b` falla); `--env CLAVE=valor` gana sobre `.env.testigo`; `--device <serial>` si hay más de un dispositivo; `--profile smoke|dev|evidencia` cambia qué se captura.
+Otras opciones útiles: `--flows` se repite, una vez por ruta (`--flows flows/a --flows flows/b`; `--flows a b` falla); `--env CLAVE=valor` gana sobre `.env.testigo`; `--device <serial>` si hay más de un dispositivo; `--profile smoke|dev|evidencia` cambia qué se captura; `--flow-timeout <segundos>` cambia el tiempo máximo de cada flow (600 por defecto).
 
 ## Códigos de salida
 
@@ -29,7 +29,7 @@ Otras opciones útiles: `--flows` se repite, una vez por ruta (`--flows flows/a 
 |---|---|---|
 | 0 | Todo pasó | Sigue al siguiente nivel |
 | 1 | Algún flow falló | Fase 5: leer el fallo y corregir |
-| 2 | Entorno, configuración o forma de un flow | Si es forma, el mensaje dice qué agregar; si es entorno, `testigo doctor` |
+| 2 | Entorno, configuración o forma de un flow; también «Corrida interrumpida» si el dispositivo dejó de estar listo a mitad de la corrida | Si es forma, el mensaje dice qué agregar; si es entorno, `testigo doctor`; si es una corrida interrumpida, ver «Problemas del dispositivo» |
 | 3 | Política local-only | Quitar lo prohibido; nunca esquivar la regla |
 | 4 | Quedó un dato sin sanitizar en la evidencia | Avisar al dev; no es un problema del flow |
 | 130 | Cancelado | — |
@@ -137,4 +137,7 @@ No son fallos del flow: avísale al dev qué hacer y no cambies el YAML por ello
 | «Android App Compatibility» sobre la app al arrancar, a veces con demora | Emulador o teléfono con páginas de 16 KB y un APK con librerías nativas sin alinear. `clearState` borra «Don't Show Again», así que vuelve en cada flow | Correr en una imagen de 4 KB o en un teléfono sin 16 KB, o alinear el APK (cambio de build: va a `huecos.md`). En el flow, ciérralo con el tap opcional de patrones. `testigo doctor` lo confirma y dice qué libs están sin alinear |
 | `adb devices` vacío o `unauthorized` | Cable, depuración USB o la huella del equipo sin aceptar | El dev reconecta y acepta el aviso en el teléfono |
 | `Shell does not have permission to access user 10` | Perfil de trabajo o segundo espacio | Agrega `--user 0` a los comandos de `pm` |
-| La corrida tarda en arrancar o se corta sin paso fallido | Dispositivo bloqueado o con la pantalla apagada | El dev lo desbloquea y deja la pantalla encendida |
+| La corrida tarda en arrancar o se corta sin paso fallido | Dispositivo bloqueado o con la pantalla apagada. testigo enciende la pantalla y quita el bloqueo de deslizar antes de cada flow; con PIN, patrón o contraseña no puede | Con PIN, la corrida se detiene con código 2 y lo dice: el dev quita el bloqueo del dispositivo de pruebas (`adb shell locksettings clear --old <PIN>` en un emulador) |
+| «Corrida interrumpida: … no estuvo listo» (código 2) | El dispositivo no terminó de arrancar, o se reinició, y no volvió en 3 minutos | No es del flow ni de la app. El dev espera a que el dispositivo termine de arrancar y repite; `summary.md` dice cuántas corridas no se ejecutaron |
+| Un flow dice «el dispositivo se reinició … no lo tomes como un defecto de la app» | El emulador o el teléfono se reinició antes o durante ese flow (`boot_id` distinto) | Repite el flow. Si pasa seguido, es del dispositivo: poca memoria, un build que lo tumba, un emulador sin recursos |
+| «superó el tiempo máximo» | Maestro se colgó (por ejemplo, tras cerrar la app con Atrás) o el flow es más largo que `--flow-timeout` | Repite el flow; si es largo de verdad, sube `--flow-timeout`. testigo ya corta Maestro y reinstala su driver en el flow siguiente |

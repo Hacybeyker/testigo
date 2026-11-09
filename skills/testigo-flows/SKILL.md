@@ -95,7 +95,7 @@ Todo lo que lees queda en la conversación y se vuelve a enviar en cada paso. Le
 
 En este orden, sin saltar niveles. Los dos primeros no usan el dispositivo.
 
-1. **Forma, política y sintaxis:** desde la suite, `validar.py <flow>`. Corre `testigo run --dry-run` (código 2 = forma, 3 = política) y `maestro-local.sh check-syntax` del flow y de cada subflow que llama. `check-syntax` solo no basta: acepta un archivo sin `appId`. También avisa si un assert usa `leftOf`, `rightOf`, `above` o `below` sin `childOf`: revísalo antes de seguir.
+1. **Forma, política y sintaxis:** desde la suite, `validar.py <flow>`. Corre `testigo run --dry-run` (código 2 = forma, 3 = política) y `maestro-local.sh check-syntax` del flow y de cada subflow que llama. `check-syntax` solo no basta: acepta un archivo sin `appId`. También avisa, para que lo revises antes de seguir, si un assert usa `leftOf`, `rightOf`, `above` o `below` sin `childOf`, si un `scrollUntilVisible` sube el `speed` sobre 40 o lo sigue un toque sin `centerElement: true` ni `waitForAnimationToEnd`, y falla si un `takeScreenshot` usa `..` o una ruta absoluta, que Maestro rechaza.
 2. **Selectores contra el mapa:** cada selector del flow existe en `app-map.yaml`. Si alguno está `confirmed: false`, confírmalo (fase 1) o avisa que lo confirmará la corrida real.
 3. **Corrida real:** `testigo run --flows <flow> 2>&1 | sed -n '/^Flows$/,$p;/^Error/p;/^Usage/p'`.
 4. **Estabilidad:** `testigo run --flows <flow> --repeat 3 2>&1 | sed -n '/^Resultado/,$p;/^Error/p;/^Usage/p'`. Listo solo si dice `estable` (3/3). `intermitente` también es un fallo: fase 5, con el motivo y el `report.html` de la corrida que falló. Para una tanda, una sola corrida con `--flows` repetido. Si testigo no conoce `--repeat` (la 0.1.0), corre el nivel 3 tres veces.
@@ -110,7 +110,7 @@ En este orden, sin saltar niveles. Los dos primeros no usan el dispositivo.
    - **Estado inicial distinto:** arregla el inicio del flow (`clearState`, subflow de preparación).
    - **Dato de prueba que no sirve:** pregúntale al dev.
    - **Bug de la app** (crash en `crash.txt`, 4xx o 5xx inesperado, pantalla incorrecta): no toques el flow; repórtalo.
-   - **Entorno** (el driver de Maestro no se instala, el dispositivo se desconecta): no es el flow. Ver «Problemas del dispositivo» en [references/testigo.md](references/testigo.md).
+   - **Entorno** (el driver de Maestro no se instala, el dispositivo se desconecta, «Corrida interrumpida», «el dispositivo se reinició», «superó el tiempo máximo»): no es el flow. Ver «Problemas del dispositivo» en [references/testigo.md](references/testigo.md).
 4. Como máximo tres intentos por flow. Si no pasa, entrégalo marcado como pendiente, con la causa y lo que falta.
 
 ## Fase 6. Entregar
