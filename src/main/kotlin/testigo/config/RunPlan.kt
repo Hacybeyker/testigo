@@ -2,6 +2,7 @@ package testigo.config
 
 import testigo.artifact.Artifact
 import testigo.maestro.FlowFile
+import testigo.maestro.MaestroCli
 import java.nio.file.Path
 
 /** De dónde salió un valor resuelto. Se muestra en `--dry-run` para que la precedencia sea visible. */
@@ -38,6 +39,8 @@ data class RunOptions(
     val redact: Boolean? = null,
     /** `--repeat`: cuántas veces corre cada flow. */
     val repeat: Int? = null,
+    /** `--flow-timeout`: segundos máximos de cada flow. */
+    val flowTimeout: Int? = null,
 ) {
     override fun toString(): String = "RunOptions(envKeys=${env.keys}, ...)"
 }
@@ -84,7 +87,16 @@ data class RunPlan(
     val warnings: List<String>,
     /** Cuántas veces corre la lista de flows, en rondas. 1 es una corrida normal. */
     val repeat: Int = 1,
+    /** Segundos máximos de cada flow. */
+    val flowTimeout: Resolved<Int> = Resolved(FlowTimeout.DEFAULT_S, Source.DEFAULT),
 )
+
+/** Tiempo máximo de cada flow: con Maestro colgado, sin esto la corrida no termina nunca. */
+object FlowTimeout {
+    const val MIN_S = 30
+    const val MAX_S = 3600
+    val DEFAULT_S: Int = MaestroCli.DEFAULT_TIMEOUT.inWholeSeconds.toInt()
+}
 
 /** Límites de `--repeat`: más de [MAX] corridas seguidas suele ser un error de tipeo. */
 object Repeat {

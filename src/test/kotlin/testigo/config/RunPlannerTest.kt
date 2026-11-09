@@ -69,6 +69,17 @@ class RunPlannerTest {
     }
 
     @Test
+    fun `el tiempo maximo de cada flow sale del flag, de testigo yaml o es 10 minutos`() {
+        val config = ProjectConfig(app = AppConfig(artifact = "build/app.aab"), defaults = DefaultsConfig(flowTimeoutS = 300))
+
+        assertEquals(Resolved(600, Source.DEFAULT), plan().flowTimeout)
+        assertEquals(Resolved(300, Source.PROJECT), plan(project = project(config)).flowTimeout)
+        assertEquals(Resolved(90, Source.FLAG), plan(RunOptions(flowTimeout = 90), project(config)).flowTimeout)
+        assertThrows<TestigoException> { plan(RunOptions(flowTimeout = 5)) }
+        assertThrows<TestigoException> { plan(RunOptions(flowTimeout = 7200)) }
+    }
+
+    @Test
     fun `repeat es 1 por defecto y fuera de 1 a 20 es un error`() {
         assertEquals(1, plan().repeat)
         assertEquals(3, plan(RunOptions(repeat = 3)).repeat)

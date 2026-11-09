@@ -55,6 +55,8 @@ data class MaestroConfig(
 @Serializable
 data class DefaultsConfig(
     val profile: Profile? = null,
+    /** Tiempo máximo de cada flow, en segundos: pasado ese tiempo se corta Maestro y el flow falla. Ver [FlowTimeout]. */
+    @SerialName("flow_timeout_s") val flowTimeoutS: Int? = null,
 )
 
 @Serializable

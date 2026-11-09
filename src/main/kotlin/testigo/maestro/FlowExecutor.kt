@@ -1,6 +1,7 @@
 package testigo.maestro
 
 import testigo.ExitCode
+import testigo.android.DeviceGuard
 import testigo.logs.LogCollector
 import testigo.network.NetworkCollector
 import testigo.network.NetworkOutcome
@@ -61,6 +62,10 @@ data class FlowResult(
     val unscanned: List<Path> = emptyList(),
     /** Con `--repeat`: en qué ronda corrió, desde 1. */
     val attempt: Int = 1,
+    /** Maestro no terminó en el tiempo máximo y testigo lo cortó. */
+    val timedOut: Boolean = false,
+    /** Algo del dispositivo que explica un fallo sin que sea de la app, como un reinicio. null si nada. */
+    val deviceNote: String? = null,
 )
 
 data class RunResult(
@@ -74,6 +79,10 @@ data class RunResult(
     val startedAt: ZonedDateTime = ZonedDateTime.now(),
     /** `--repeat`: cuántas rondas corrieron. [flows] trae una entrada por corrida, ronda tras ronda. */
     val repeat: Int = 1,
+    /** Por qué la corrida se detuvo antes de terminar (el dispositivo dejó de estar listo); null si llegó al final. */
+    val aborted: String? = null,
+    /** Corridas que no llegaron a ejecutarse por [aborted]. */
+    val notRun: Int = 0,
 ) {
     /** Nombre de la carpeta de la corrida: `20261016-201344_PROJ-123_a1b2c3d`. */
     val id: String get() = dir.fileName.toString()
@@ -97,10 +106,11 @@ data class RunResult(
             else -> EvidenceStatus.NO_APTA
         }
 
-    /** Un leak pesa más que un flow fallido: la evidencia no se puede compartir. */
+    /** Un leak pesa más que un flow fallido: la evidencia no se puede compartir. Una corrida interrumpida es del entorno. */
     val exitCode: ExitCode
         get() = when {
             leaks.isNotEmpty() -> ExitCode.LEAK
+            aborted != null -> ExitCode.ENVIRONMENT
             passed == flows.size -> ExitCode.OK
             else -> ExitCode.FLOW_FAILED
         }
@@ -136,7 +146,10 @@ class FlowExecutor(
     private val rules: RedactRules? = null,
     /** `--keep-raw`: los crudos de Maestro quedan en `<flow>/raw/maestro/`. */
     private val keepRaw: Boolean = false,
+    /** Tiempo máximo de cada flow: pasado ese tiempo se corta Maestro y el flow falla. */
     private val timeout: Duration = MaestroCli.DEFAULT_TIMEOUT,
+    /** null: no se revisa el dispositivo. Si no, se revisa antes y después de cada flow. */
+    private val guard: DeviceGuard? = null,
     private val now: () -> LocalDateTime = LocalDateTime::now,
     private val progress: (String) -> Unit = {},
 ) {
@@ -161,18 +174,37 @@ class FlowExecutor(
         val names = uniqueNames(flows)
         val redactor = rules?.let { Redactor(it, env) } ?: Redactor.NONE
         val total = flows.size * repeat
-        val results = (1..repeat).flatMap { attempt ->
-            flows.mapIndexed { index, flow ->
+        val results = mutableListOf<FlowResult>()
+        var aborted: String? = null
+        // Tras un timeout o un reinicio, el driver de Maestro puede haber quedado a medias: el flow siguiente lo reinstala.
+        var freshDriver = false
+        rounds@ for (attempt in 1..repeat) {
+            for ((index, flow) in flows.withIndex()) {
                 val name = names[index]
                 val position = (attempt - 1) * flows.size + index + 1
                 val round = if (repeat > 1) " · ronda $attempt de $repeat" else ""
                 progress("▶ $name ($position/$total$round)")
-                val dir = if (repeat > 1) runDir.resolve(name).resolve(attempt.toString()) else runDir.resolve(name)
-                runFlow(flow, name, dir, device, env, redactor, appId, reinstallDriver = position == 1, attempt = attempt).also {
-                    val crash = if (it.crash != null) " (crash de la app)" else ""
-                    val leaks = if (it.leaks.isNotEmpty()) " · datos sin enmascarar" else ""
-                    progress("  ${it.status.symbol} ${it.status.label}$crash · ${format(it.duration)}$leaks")
+                val check = guard?.beforeFlow()
+                check?.notes?.forEach { progress("  ! $it") }
+                if (check?.problem != null) {
+                    aborted = check.problem
+                    progress("  ✗ ${check.problem}")
+                    break@rounds
                 }
+                val dir = if (repeat > 1) runDir.resolve(name).resolve(attempt.toString()) else runDir.resolve(name)
+                val result = runFlow(
+                    flow, name, dir, device, env, redactor, appId,
+                    reinstallDriver = position == 1 || freshDriver || check?.restarted == true,
+                    attempt = attempt,
+                    restartedBefore = check?.restarted == true,
+                )
+                freshDriver = result.timedOut || result.deviceNote != null
+                results += result
+                val crash = if (result.crash != null) " (crash de la app)" else ""
+                val leaks = if (result.leaks.isNotEmpty()) " · datos sin enmascarar" else ""
+                val timedOut = if (result.timedOut) " · cortado por el tiempo máximo" else ""
+                progress("  ${result.status.symbol} ${result.status.label}$crash$timedOut · ${format(result.duration)}$leaks")
+                result.deviceNote?.let { progress("  ! $it") }
             }
         }
         return RunResult(
@@ -183,6 +215,8 @@ class FlowExecutor(
             sanitized = rules != null,
             startedAt = startedAt.atZone(ZoneId.systemDefault()),
             repeat = repeat,
+            aborted = aborted,
+            notRun = if (aborted != null) total - results.size else 0,
         )
     }
 
@@ -196,6 +230,7 @@ class FlowExecutor(
         appId: String,
         reinstallDriver: Boolean,
         attempt: Int,
+        restartedBefore: Boolean,
     ): FlowResult {
         dir.createDirectories()
         // Maestro escribe fuera de evidence/: a la carpeta del flow solo entra lo ya sanitizado.
@@ -230,6 +265,7 @@ class FlowExecutor(
             video?.close()
         }
         val duration = (System.nanoTime() - started).nanoseconds
+        val restartedDuring = guard?.restartedDuringFlow() == true
         val videoOutcome = video?.finish(dir)
         val logOutcome = logCollector?.finish(dir, redactor)
         logOutcome?.note?.let { progress("  ! logcat: $it") }
@@ -244,13 +280,19 @@ class FlowExecutor(
         val report = dir.resolve("report.html")
         val hasReport = report.isRegularFile()
         val maestroReason = when {
-            outcome.timedOut -> "superó el tiempo máximo de ${format(timeout)}"
+            outcome.timedOut -> "superó el tiempo máximo de ${format(timeout)}: Maestro quedó colgado o el flow es más largo; " +
+                "si es lo segundo, sube --flow-timeout"
             outcome.exitCode == 0 && hasReport -> null
             outcome.exitCode == 0 -> "Maestro terminó sin generar report.html"
             else -> lastLines(consoleText) ?: "Maestro terminó con código ${outcome.exitCode}"
         }
+        val deviceNote = listOfNotNull(
+            "el dispositivo se reinició antes de este flow".takeIf { restartedBefore },
+            "el dispositivo se reinició o dejó de responder durante este flow".takeIf { restartedDuring },
+        ).joinToString("; ").takeIf { it.isNotEmpty() }
         // Un crash de la app es un fallo aunque Maestro haya terminado bien.
-        val reason = listOfNotNull(logOutcome?.crash?.let { "crash de la app: $it" }, maestroReason)
+        val failure = listOfNotNull(logOutcome?.crash?.let { "crash de la app: $it" }, maestroReason)
+        val reason = (listOfNotNull(deviceNote?.takeIf { failure.isNotEmpty() }?.let { "$it: no lo tomes como un defecto de la app" }) + failure)
             .takeIf { it.isNotEmpty() }
             ?.joinToString("\n")
         val scan = rules?.let { LeakScanner.scan(dir, redactor) }
@@ -271,6 +313,8 @@ class FlowExecutor(
             leaks = scan?.leaks.orEmpty(),
             unscanned = scan?.unscanned.orEmpty(),
             attempt = attempt,
+            timedOut = outcome.timedOut,
+            deviceNote = deviceNote,
         )
     }
 

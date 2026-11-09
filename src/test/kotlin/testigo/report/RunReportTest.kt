@@ -77,6 +77,38 @@ class RunReportTest {
     )
 
     @Test
+    fun `una corrida interrumpida lo dice en el summary y en metadata, y sale con codigo 2`() {
+        val base = result()
+        val interrupted = base.copy(
+            flows = listOf(flow("registro", FlowStatus.PASSED).copy(deviceNote = "el dispositivo se reinició antes de este flow")),
+            aborted = "emulator-5554 no estuvo listo en 3m: Android todavía está arrancando.",
+            notRun = 2,
+        )
+
+        val summary = RunReport.summary(interrupted, context(), tmp)
+        assertTrue("**Corrida interrumpida:** emulator-5554 no estuvo listo en 3m" in summary, summary)
+        assertTrue("No corrieron 2 corridas." in summary, summary)
+        assertTrue("### Dispositivo\n- **registro**: el dispositivo se reinició antes de este flow" in summary, summary)
+        assertEquals(ExitCode.ENVIRONMENT, interrupted.exitCode)
+
+        val metadata = Json.parse(Json.write(RunReport.metadata(interrupted, context(), tmp))) as Map<*, *>
+        assertEquals(2L, metadata["not_run"])
+        assertTrue((metadata["aborted"] as String).contains("no estuvo listo"))
+        assertEquals(2L, metadata["exit_code"])
+        val flow = (metadata["flows"] as List<*>).single() as Map<*, *>
+        assertEquals(false, flow["timed_out"])
+        assertEquals("el dispositivo se reinició antes de este flow", flow["device_note"])
+    }
+
+    @Test
+    fun `una corrida completa no trae aborted en metadata`() {
+        val metadata = Json.parse(Json.write(RunReport.metadata(result(), context(), tmp))) as Map<*, *>
+
+        assertFalse(metadata.containsKey("aborted"))
+        assertFalse(RunReport.summary(result(), context(), tmp).contains("Corrida interrumpida"))
+    }
+
+    @Test
     fun `con repeat el summary dice cuantas veces paso cada flow y cuales son intermitentes`() {
         val base = result()
         fun run(name: String, attempt: Int, status: FlowStatus, reason: String? = null) =

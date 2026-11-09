@@ -44,6 +44,24 @@ class RunResultRendererTest {
     }
 
     @Test
+    fun `una corrida interrumpida abre con el motivo y dice cuantas corridas no se ejecutaron`() {
+        val result = RunResult(
+            cwd.resolve("evidence/20261016-170000"),
+            listOf(flow().copy(deviceNote = "el dispositivo se reinició antes de este flow")),
+            13.seconds,
+            aborted = "emulator-5554 no estuvo listo en 3m: Android todavía está arrancando.",
+            notRun = 4,
+        )
+
+        val text = RunResultRenderer.render(result, cwd)
+
+        assertEquals(ExitCode.ENVIRONMENT, result.exitCode)
+        assertTrue(text.contains("! Corrida interrumpida: emulator-5554 no estuvo listo en 3m"), text)
+        assertTrue(text.contains("No corrieron 4 corridas por eso."), text)
+        assertTrue(text.contains("      ! el dispositivo se reinició antes de este flow"), "un flow que pasó muestra su nota: $text")
+    }
+
+    @Test
     fun `con repeat muestra cuantas veces paso cada flow y el detalle de las corridas que fallaron`() {
         val dir = cwd.resolve("evidence/20261016-170000")
         val failed = flow().copy(

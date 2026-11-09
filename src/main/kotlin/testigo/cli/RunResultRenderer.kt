@@ -20,6 +20,7 @@ object RunResultRenderer {
     /** [summary]: el `summary.md` de la corrida, para copiarlo al PR o al ticket. */
     fun render(result: RunResult, cwd: Path, summary: Path? = null): String = buildString {
         appendLine()
+        aborted(result)
         if (result.repeat > 1) repeated(result, cwd) else single(result, cwd)
         appendLine("Evidencia: ${result.dir.displayFrom(cwd)}")
         summary?.let { appendLine("Resumen:   ${it.displayFrom(cwd)}") }
@@ -29,6 +30,14 @@ object RunResultRenderer {
         if (result.keepRaw) appendLine("! raw/ de cada flow tiene datos sin sanitizar (--keep-raw): no compartas esas carpetas.")
     }.trimEnd()
 
+    /** La corrida se detuvo porque el dispositivo dejó de estar listo: no es un fallo de los flows. */
+    private fun StringBuilder.aborted(result: RunResult) {
+        val reason = result.aborted ?: return
+        appendLine("! Corrida interrumpida: $reason")
+        if (result.notRun > 0) appendLine("  No corrieron ${result.notRun} ${if (result.notRun == 1) "corrida" else "corridas"} por eso.")
+        appendLine()
+    }
+
     private fun StringBuilder.single(result: RunResult, cwd: Path) {
         appendLine("Resultado: ${result.passed} de ${result.flows.size} flows pasaron · ${FlowExecutor.format(result.duration)}")
         val nameWidth = result.flows.maxOfOrNull { it.name.length } ?: 0
@@ -37,6 +46,7 @@ object RunResultRenderer {
             flow.report?.let { append("  ").append(it.displayFrom(cwd)) }
             appendLine()
             flow.reason?.lines()?.forEach { appendLine("      $it") }
+            if (flow.reason == null) flow.deviceNote?.let { appendLine("      ! $it") }
             flow.crashFile?.let { appendLine("      crash: ${it.displayFrom(cwd)}") }
             flow.network?.let { network ->
                 network.summary?.let { s ->

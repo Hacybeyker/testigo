@@ -1,6 +1,8 @@
 package testigo.maestro
 
 import testigo.TestigoException
+import testigo.android.DeviceCheck
+import testigo.android.DeviceGuard
 import testigo.ExitCode
 import testigo.config.RedactConfig
 import testigo.config.RedactPreset
@@ -13,6 +15,7 @@ import testigo.redact.Redactor
 import testigo.video.Recorder
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -21,6 +24,7 @@ import org.junit.jupiter.api.condition.OS
 import org.junit.jupiter.api.io.TempDir
 import java.nio.file.Path
 import java.time.LocalDateTime
+import kotlin.time.Duration.Companion.seconds
 import kotlin.io.path.createDirectories
 import kotlin.io.path.exists
 import kotlin.io.path.listDirectoryEntries
@@ -73,6 +77,7 @@ class FlowExecutorTest {
                 echo "Respuesta: $JWT"
                 echo '{"session":"$JWT"}' > "${'$'}out/2026-10-16_143012/${'$'}name/commands.json"
                 echo "[Passed] ${'$'}name (1s)";;
+              *cuelga*) sleep 30; echo "[Passed] ${'$'}name (1s)";;
               *intermitente*)
                 # Falla la primera vez y pasa las siguientes.
                 if [ -f "${'$'}(dirname "${'$'}0")/intermitente.ok" ]; then echo "[Passed] ${'$'}name (1s)"
@@ -337,6 +342,91 @@ class FlowExecutorTest {
         assertEquals("[Failed] registro (5s) (Element not found: Text matching regex: Crear cuenta)", FlowExecutor.lastLines(console))
         assertEquals("12.3 s", FlowExecutor.format(kotlin.time.Duration.parse("12.34s")))
         assertEquals("1 min 12 s", FlowExecutor.format(kotlin.time.Duration.parse("72s")))
+    }
+
+    @Test
+    fun `un flow colgado se corta por el tiempo maximo y el siguiente reinstala el driver`() {
+        val script = fakeMaestro()
+        val progress = mutableListOf<String>()
+        val executor = FlowExecutor(MaestroCli(script), timeout = 1.seconds, progress = { progress += it })
+
+        val result = executor.run(
+            flows = listOf(flow("uno.yaml", null), flow("cuelga.yaml", null), flow("tres.yaml", null)),
+            device = "emulator-5554",
+            env = emptyMap(),
+            evidenceRoot = tmp.resolve("evidence"),
+            appId = "com.empresa.app",
+        )
+
+        assertEquals(listOf(FlowStatus.PASSED, FlowStatus.FAILED, FlowStatus.PASSED), result.flows.map { it.status })
+        val hung = result.flows[1]
+        assertTrue(hung.timedOut)
+        assertTrue(hung.reason!!.contains("superó el tiempo máximo") && hung.reason!!.contains("--flow-timeout"), hung.reason)
+        assertTrue(progress.any { "cortado por el tiempo máximo" in it }, progress.toString())
+        val calls = script.resolveSibling("calls.txt").readLines()
+        assertTrue(calls[1].contains("--no-reinstall-driver"), "tras un flow que pasó se reutiliza el driver")
+        assertFalse(calls[2].contains("--no-reinstall-driver"), "tras un timeout el driver puede estar a medias: se reinstala")
+    }
+
+    /** Un guardián con respuestas fijas, una por flow. */
+    private class FakeGuard(private val checks: List<DeviceCheck>, private val restartedDuring: List<Boolean> = emptyList()) : DeviceGuard {
+        private var before = 0
+        private var during = 0
+
+        override fun beforeFlow(): DeviceCheck = checks[before++]
+
+        override fun restartedDuringFlow(): Boolean = restartedDuring.getOrElse(during++) { false }
+    }
+
+    @Test
+    fun `si el dispositivo deja de estar listo la corrida se detiene con codigo 2 y dice cuantas no corrieron`() {
+        val progress = mutableListOf<String>()
+        val guard = FakeGuard(listOf(DeviceCheck(), DeviceCheck(problem = "emulator-5554 no estuvo listo en 3m: Android todavía está arrancando.")))
+        val executor = FlowExecutor(MaestroCli(fakeMaestro()), guard = guard, progress = { progress += it })
+
+        val result = executor.run(
+            flows = listOf(flow("uno.yaml", null), flow("dos.yaml", null), flow("tres.yaml", null)),
+            device = "emulator-5554",
+            env = emptyMap(),
+            evidenceRoot = tmp.resolve("evidence"),
+            appId = "com.empresa.app",
+        )
+
+        assertEquals(listOf("uno"), result.flows.map { it.name })
+        assertTrue(result.aborted!!.contains("no estuvo listo"), result.aborted)
+        assertEquals(2, result.notRun)
+        assertEquals(ExitCode.ENVIRONMENT, result.exitCode)
+        assertTrue(progress.any { it.startsWith("  ✗ emulator-5554 no estuvo listo") }, progress.toString())
+        assertFalse(result.dir.resolve("dos").exists(), "un flow que no corrió no deja carpeta")
+    }
+
+    @Test
+    fun `un reinicio del dispositivo queda anotado, reinstala el driver y no se toma como un defecto de la app`() {
+        val script = fakeMaestro()
+        val guard = FakeGuard(
+            checks = listOf(DeviceCheck(), DeviceCheck(restarted = true), DeviceCheck()),
+            restartedDuring = listOf(false, false, true),
+        )
+        val executor = FlowExecutor(MaestroCli(script), guard = guard)
+
+        val result = executor.run(
+            flows = listOf(flow("uno.yaml", null), flow("dos.yaml", null), flow("falla.yaml", null)),
+            device = "emulator-5554",
+            env = emptyMap(),
+            evidenceRoot = tmp.resolve("evidence"),
+            appId = "com.empresa.app",
+        )
+
+        assertNull(result.flows[0].deviceNote)
+        assertEquals(FlowStatus.PASSED, result.flows[1].status)
+        assertEquals("el dispositivo se reinició antes de este flow", result.flows[1].deviceNote, "pasó, pero queda anotado")
+        val failed = result.flows[2]
+        assertTrue(failed.deviceNote!!.contains("durante este flow"), failed.deviceNote)
+        assertTrue(failed.reason!!.lines().first().contains("no lo tomes como un defecto de la app"), failed.reason)
+        val calls = script.resolveSibling("calls.txt").readLines()
+        assertFalse(calls[1].contains("--no-reinstall-driver"), "tras un reinicio se reinstala el driver")
+        assertFalse(calls[2].contains("--no-reinstall-driver"), "y también tras un flow que lo anotó")
+        assertEquals(ExitCode.FLOW_FAILED, result.exitCode)
     }
 
     companion object {

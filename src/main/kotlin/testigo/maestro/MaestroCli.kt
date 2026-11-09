@@ -58,6 +58,8 @@ class MaestroCli(val executable: Path) {
             .redirectOutput(test.console.toFile())
             .start()
         if (!process.waitFor(test.timeout.inWholeMilliseconds, TimeUnit.MILLISECONDS)) {
+            // El script de Maestro hace exec de la JVM, pero si algún día lanza procesos hijos no deben quedar huérfanos.
+            process.descendants().forEach { it.destroyForcibly() }
             process.destroyForcibly()
             process.waitFor(10, TimeUnit.SECONDS)
             return MaestroOutcome(exitCode = -1, timedOut = true)
@@ -110,7 +112,7 @@ class MaestroCli(val executable: Path) {
             return MaestroCli(executable)
         }
 
-        /** Los flows duran menos de 3 minutos; esto cubre además el arranque del driver. */
-        val DEFAULT_TIMEOUT: Duration = 15.minutes
+        /** Los flows duran menos de 3 minutos; esto cubre además el arranque del driver. Cambia con `--flow-timeout`. */
+        val DEFAULT_TIMEOUT: Duration = 10.minutes
     }
 }

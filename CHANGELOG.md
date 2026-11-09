@@ -6,8 +6,15 @@ Los cambios importantes de `testigo`, de la versión más nueva a la más vieja.
 
 Para actualizar desde 0.3.0: la misma línea de `install.sh`. Los comandos, `metadata.json` (solo suma campos) y los códigos de salida son los de 0.3.0; la novedad es que un dispositivo que no responde ahora termina la corrida con código 2.
 
+### Agregado
+
+- Antes de cada flow, `testigo` espera a que el dispositivo esté listo (`sys.boot_completed` y la app resuelta por Android), enciende la pantalla si estaba apagada y descarta el bloqueo de deslizar. Si no está listo a los 3 minutos, o tiene un bloqueo con PIN, patrón o contraseña, la corrida se detiene con código 2, dice cuántas corridas no se ejecutaron y lo deja en `summary.md` y `metadata.json` (`aborted`, `not_run`).
+- Detecta si el dispositivo se reinició, o dejó de responder, antes o durante un flow (con el `boot_id` del kernel). El flow queda anotado (`device_note` en `metadata.json`, sección *Dispositivo* de `summary.md`), un fallo lo dice primero y no se toma como un defecto de la app.
+- `--flow-timeout` y `defaults.flow_timeout_s`: tiempo máximo de cada flow, de 30 a 3600 segundos. `metadata.json` agrega `timed_out` por flow y `flow_timeout_s` en las opciones.
+
 ### Cambiado
 
+- El tiempo máximo de cada flow por defecto baja de 15 a 10 minutos: un Maestro colgado detenía la corrida el doble de lo necesario. Pasado el tiempo, también se cierran los procesos que lanzó, y el flow siguiente reinstala el driver de Maestro (lo mismo tras un reinicio del dispositivo).
 - `logcat.txt` ya no pierde líneas en ráfagas: mientras corre el flow, el buffer de logcat del dispositivo sube a 16 MiB (`logcat -G`) y al terminar vuelve al tamaño que tenía. Si el dispositivo no deja cambiarlo, lo avisa y sigue.
 - Si una corrida anterior murió sin limpiar y dejó su `adb logcat` abierto, la siguiente lo cierra antes de empezar, para que no escriba líneas repetidas. Solo cierra el de una corrida que ya no existe: nunca el de otra en marcha ni un proceso que no sea `adb logcat`.
 
