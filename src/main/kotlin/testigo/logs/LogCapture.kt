@@ -8,10 +8,8 @@ import testigo.redact.Redactor
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.TimeUnit
-import kotlin.io.path.createDirectories
 import kotlin.io.path.deleteIfExists
 import kotlin.io.path.exists
-import kotlin.io.path.readText
 import kotlin.io.path.writeText
 import kotlin.time.Duration.Companion.seconds
 
@@ -27,19 +25,26 @@ interface LogCollector {
 
     /** Todo lo que se escribe pasa antes por [redactor]. */
     fun finish(dir: Path, redactor: Redactor): LogOutcome
+
+    /**
+     * La corrida se cortó antes de [finish] (Maestro lanzó una excepción): deja el dispositivo como estaba y borra lo que
+     * escribió fuera de `evidence/`. No escribe evidencia y no falla.
+     */
+    fun abort() {}
 }
 
 /**
  * logcat de la app durante el flow y el buffer de crashes al final.
- * - Antes del flow, el buffer de logcat sube a [bufferSize] (`logcat -G`): `adb shell input` y los reinicios de la app lo
- *   llenan, y con el buffer chico se pierden líneas antes de que se lean. Al final se deja el tamaño que tenía.
+ * - Antes del flow, los buffers de logcat suben a [bufferSize] (`logcat -G`): `adb shell input` y los reinicios de la app
+ *   lo llenan, y con el buffer chico se pierden líneas antes de que se lean. Al final cada buffer vuelve a su tamaño.
  * - Luego `logcat -c`: así un crash en el buffer es de este flow.
  * - Durante el flow, un solo `logcat -v threadtime --uid=<uid de la app>` corriendo hacia `logcat.txt`: solo los logs de
  *   la app, no los de otras apps del dispositivo. Leer con `logcat -d` en un bucle pierde líneas; esto no. Android 9 o
  *   anterior no tiene `--uid`: ahí se guarda todo.
- * - Si una corrida anterior murió sin limpiar y su captura seguía abierta, [pidFile] la delata y se cierra antes de
- *   empezar, para que no escriba líneas repetidas ni gaste el dispositivo.
  * - Al final, `logcat -b crash -d`: si hay un crash de la app, va a `crash.txt` y el flow queda marcado.
+ * - La corrida puede morir con los buffers agrandados y el `adb logcat` abierto. Para que eso no pase: [Cleanup] lo deshace
+ *   si se corta con Ctrl+C, [abort] si Maestro falla, y [stateDir] guarda lo necesario para que la siguiente corrida lo
+ *   deshaga si la anterior murió sin poder hacerlo (`kill -9`). Ver [StaleCapture].
  * El logcat crudo se escribe fuera de `evidence/`; solo entra sanitizado. Con [keepRaw] queda en `raw/`.
  */
 class LogCapture(
@@ -50,35 +55,42 @@ class LogCapture(
     private val sdk: Int?,
     private val runner: CommandRunner,
     private val keepRaw: Boolean = false,
-    /** Dónde anotar el pid de la captura en curso. null: no se anota ni se busca una anterior. */
-    private val pidFile: Path? = null,
-    /** Tamaño del buffer de logcat durante el flow, como lo pide `logcat -G` (`16M`). null: no se cambia. */
+    /** Dónde anota cada corrida su captura en curso (`~/.testigo/run`). null: no se anota ni se busca una anterior. */
+    private val stateDir: Path? = null,
+    /** Tamaño de los buffers de logcat durante el flow, como lo pide `logcat -G` (`16M`). null: no se cambian. */
     private val bufferSize: String? = DEFAULT_BUFFER,
     private val startProcess: (List<String>, Path) -> Process = { command, output ->
         ProcessBuilder(command).redirectErrorStream(true).redirectOutput(output.toFile()).start()
     },
 ) : LogCollector {
+    private val store = stateDir?.let { CaptureStore(it.resolve("logcat-" + serial.replace(Regex("[^A-Za-z0-9._-]"), "_"))) }
+    private val self = ProcessHandle.current().pid()
+
+    /** Lo que esta captura le debe al dispositivo: sus buffers originales y su `adb logcat`. */
+    private var record = CaptureRecord(ownerPid = self)
     private var process: Process? = null
     private var raw: Path? = null
-
-    /** El tamaño que tenía cada buffer antes de agrandarlos; null si no se cambiaron. */
-    private var restoreBuffer: Map<String, String>? = null
     private val notes = mutableListOf<String>()
 
     override fun start(dir: Path) {
-        StaleCapture.close(pidFile)?.let { notes += it }
+        try {
+            begin()
+        } catch (e: Throwable) {
+            abort()
+            throw e
+        }
+    }
+
+    private fun begin() {
+        Cleanup.register(this) { abort() }
+        store?.let { notes += StaleCapture.close(it, ::restore) }
         enlargeBuffer()
         runner.run(adb(listOf("logcat", "-c")), 30.seconds)
         val filter = if (uid != null && (sdk ?: 0) >= UID_FILTER_MIN_SDK) listOf("--uid=$uid") else emptyList()
         val file = Files.createTempFile("testigo-logcat-", ".txt").also { raw = it }
         val started = startProcess(adb(listOf("logcat", "-v", "threadtime") + filter), file)
         process = started
-        StaleCapture.record(pidFile, started.pid())
-        Cleanup.register(this) {
-            process?.destroyForcibly()
-            pidFile?.deleteIfExists()
-            file.deleteIfExists()
-        }
+        update(record.copy(logcatPid = started.pid()))
     }
 
     override fun finish(dir: Path, redactor: Redactor): LogOutcome {
@@ -86,24 +98,35 @@ class LogCapture(
             it.destroy()
             if (!it.waitFor(5, TimeUnit.SECONDS)) it.destroyForcibly()
         }
-        pidFile?.let { runCatching { it.deleteIfExists() } }
         val logcat = raw?.takeIf { it.exists() }?.let { file ->
             dir.resolve("logcat.txt").also { it.writeText(redactor.text(EvidenceFiles.read(file))) }
         }
         raw?.let { RawEvidence.keepOrDelete(it, dir, "logcat.txt", keepRaw) }
-        Cleanup.unregister(this)
 
         // Primero se lee el buffer de crashes: devolver los buffers a un tamaño menor poda lo más viejo de cada uno.
         val buffer = try {
             runner.run(adb(listOf("logcat", "-b", "crash", "-d", "-v", "threadtime")), 30.seconds)
         } finally {
-            restoreBuffer?.let { sizes -> restore(sizes) }
+            if (!release()) notes += "no pude devolver los buffers de logcat a su tamaño (adb no contestó): la próxima corrida lo hace"
+            Cleanup.unregister(this)
         }
         val note = notes.takeIf { it.isNotEmpty() }?.joinToString(" · ")
         val crash = buffer.takeIf { it.ok }?.let { CrashLog.extract(it.stdout, packageName) }
             ?: return LogOutcome(logcat, null, null, note)
         val crashFile = dir.resolve("crash.txt").also { it.writeText(redactor.text(crash)) }
         return LogOutcome(logcat, crashFile, redactor.text(CrashLog.summary(crash)), note)
+    }
+
+    override fun abort() {
+        runCatching {
+            process?.let {
+                it.destroyForcibly()
+                it.waitFor(5, TimeUnit.SECONDS)
+            }
+        }
+        runCatching { release() }
+        runCatching { raw?.deleteIfExists() }
+        Cleanup.unregister(this)
     }
 
     /**
@@ -113,25 +136,55 @@ class LogCapture(
      */
     private fun enlargeBuffer() {
         val size = bufferSize ?: return
-        val current = runCatching { runner.run(adb(listOf("logcat", "-g")), 30.seconds) }.getOrNull()
-            ?.takeIf { it.ok }?.let { LogBuffer.parseSizes(it.stdout) }.orEmpty()
-        if (current.isEmpty()) {
+        // Si otra corrida viva ya los agrandó, lo que dice `logcat -g` no es lo original: vale lo que ella anotó.
+        val original = store?.liveBuffers().orEmpty().ifEmpty {
+            runCatching { runner.run(adb(listOf("logcat", "-g")), 30.seconds) }.getOrNull()
+                ?.takeIf { it.ok }?.let { LogBuffer.parseSizes(it.stdout) }.orEmpty()
+        }
+        if (original.isEmpty()) {
             notes += "no pude leer el tamaño del buffer de logcat (logcat -g), así que no lo agrandé: si faltan líneas, es por eso"
             return
         }
+        // Se anota antes de tocar el dispositivo: si la corrida muere justo después, la siguiente sabe cómo estaba.
+        update(record.copy(buffers = original))
         val set = runCatching { runner.run(adb(listOf("logcat", "-G", size)), 30.seconds) }.getOrNull()
-        if (set?.ok == true) {
-            restoreBuffer = current
-        } else {
+        if (set != null && !set.ok) {
+            update(record.copy(buffers = emptyMap()))
             notes += "el dispositivo no dejó agrandar el buffer de logcat a $size: si faltan líneas, es por eso"
         }
     }
 
-    /** Cada buffer vuelve a su propio tamaño; los que tenían el mismo se piden juntos. */
-    private fun restore(sizes: Map<String, String>) {
-        sizes.entries.groupBy({ it.value }, { it.key }).forEach { (size, buffers) ->
-            runCatching { runner.run(adb(listOf("logcat", "-b", buffers.joinToString(","), "-G", size)), 30.seconds) }
+    /**
+     * Devuelve el dispositivo a como estaba y borra lo anotado. Los buffers solo los devuelve la última corrida en salir:
+     * si otra sigue viva sobre este dispositivo, los necesita agrandados. false si adb no contestó: queda anotado.
+     */
+    private fun release(): Boolean {
+        val file = store?.file(self)
+        val sizes = record.buffers
+        if (sizes.isNotEmpty() && (store == null || !store.othersAlive(file!!))) {
+            if (!restore(sizes)) {
+                update(record.copy(logcatPid = null))
+                return false
+            }
         }
+        record = record.copy(logcatPid = null, buffers = emptyMap())
+        file?.let { store?.delete(it) }
+        return true
+    }
+
+    /** Cada buffer vuelve a su propio tamaño; los que tenían el mismo se piden juntos. false si adb no contestó. */
+    private fun restore(sizes: Map<String, String>): Boolean {
+        var reached = true
+        sizes.entries.groupBy({ it.value }, { it.key }).forEach { (size, buffers) ->
+            val ran = runCatching { runner.run(adb(listOf("logcat", "-b", buffers.joinToString(","), "-G", size)), 15.seconds) }
+            if (ran.isFailure) reached = false
+        }
+        return reached
+    }
+
+    private fun update(updated: CaptureRecord) {
+        record = updated
+        store?.let { runCatching { it.write(it.file(self), updated) } }
     }
 
     private fun adb(args: List<String>) = listOf(adb.toString(), "-s", serial) + args
@@ -170,42 +223,6 @@ internal object LogBuffer {
             }
         }
         return sizes
-    }
-}
-
-/**
- * Una captura de logcat que una corrida anterior dejó abierta. La corrida anota en [pidFile] el pid de su `adb logcat` y el
- * suyo; la siguiente, si encuentra que el dueño ya no existe y el `adb logcat` sí, lo cierra. Si el dueño sigue vivo es otra
- * corrida en marcha sobre el mismo dispositivo: no se toca.
- */
-internal object StaleCapture {
-    fun record(pidFile: Path?, logcatPid: Long) {
-        pidFile ?: return
-        runCatching {
-            pidFile.parent?.createDirectories()
-            pidFile.writeText("$logcatPid ${ProcessHandle.current().pid()}")
-        }
-    }
-
-    /** Cierra la captura vieja si la hay; devuelve qué hizo, o null si no había nada que cerrar. */
-    fun close(pidFile: Path?): String? {
-        pidFile ?: return null
-        val pids = runCatching { pidFile.readText().trim().split(Regex("\\s+")).map { it.toLong() } }.getOrNull() ?: return null
-        runCatching { pidFile.deleteIfExists() }
-        val logcatPid = pids.getOrNull(0) ?: return null
-        val owner = pids.getOrNull(1)
-        if (owner != null && ProcessHandle.of(owner).map { it.isAlive }.orElse(false)) return null
-        val handle = ProcessHandle.of(logcatPid).orElse(null)?.takeIf { it.isAlive && isLogcat(it.info()) } ?: return null
-        handle.destroy()
-        if (runCatching { handle.onExit().get(3, TimeUnit.SECONDS) }.isFailure) handle.destroyForcibly()
-        return "cerré una captura de logcat de una corrida anterior que seguía abierta (pid $logcatPid)"
-    }
-
-    /** Solo un `adb logcat`: el pid pudo pasar a otro proceso desde entonces. */
-    private fun isLogcat(info: ProcessHandle.Info): Boolean {
-        val line = info.commandLine().orElse(null)
-        if (line != null) return "logcat" in line
-        return info.command().map { it.substringAfterLast('/').removeSuffix(".exe") == "adb" }.orElse(false)
     }
 }
 

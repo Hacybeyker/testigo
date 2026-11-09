@@ -150,14 +150,13 @@ class LogCaptureTest {
         val logcat: List<List<String>> get() = commands.map { it.drop(3) }.filter { it.firstOrNull() == "logcat" }
     }
 
-    private fun capture(runner: CommandRunner, pidFile: Path? = null) = LogCapture(
+    private fun capture(runner: CommandRunner) = LogCapture(
         adb = Path.of("/sdk/platform-tools/adb"),
         serial = "NJ4",
         packageName = "com.empresa.app",
         uid = 10234,
         sdk = 33,
         runner = runner,
-        pidFile = pidFile,
         startProcess = { _, output ->
             output.writeText("")
             ProcessBuilder("sleep", "30").start()
@@ -263,51 +262,6 @@ class LogCaptureTest {
         assertEquals(0, adb.commands.count { "-G" in it }, "sin saber cómo estaba, el buffer no se toca: logcat -G persiste")
         assertTrue(outcome.note!!.contains("no pude leer el tamaño del buffer"), outcome.note)
         assertTrue(outcome.logcat!!.exists(), "la captura sigue funcionando")
-    }
-
-    @Test
-    @DisabledOnOs(OS.WINDOWS)
-    fun `cierra una captura vieja cuya corrida ya no existe`() {
-        // Un proceso que se hace pasar por un adb logcat huérfano.
-        val stale = ProcessBuilder("sh", "-c", "sleep 60; echo adb logcat").start()
-        try {
-            val pidFile = tmp.resolve("run/logcat-NJ4.pid")
-            pidFile.parent.toFile().mkdirs()
-            pidFile.writeText("${stale.pid()} 2147483000") // el dueño no existe
-            val capture = capture(SizedAdb(), pidFile)
-
-            capture.start(tmp)
-            val outcome = capture.finish(tmp, Redactor(RedactRules.NONE))
-
-            assertTrue(stale.waitFor(5, java.util.concurrent.TimeUnit.SECONDS), "la captura vieja se cerró")
-            assertTrue(outcome.note!!.contains("captura de logcat de una corrida anterior"), outcome.note)
-            assertFalse(pidFile.exists(), "al terminar no queda el pid")
-        } finally {
-            stale.destroyForcibly()
-        }
-    }
-
-    @Test
-    @DisabledOnOs(OS.WINDOWS)
-    fun `no toca la captura de otra corrida que sigue viva ni un proceso que no es logcat`() {
-        val live = ProcessBuilder("sh", "-c", "sleep 60; echo adb logcat").start()
-        val unrelated = ProcessBuilder("sleep", "60").start()
-        try {
-            val pidFile = tmp.resolve("logcat-NJ4.pid")
-
-            pidFile.writeText("${live.pid()} ${ProcessHandle.current().pid()}") // el dueño (esta JVM) está vivo
-            assertNull(StaleCapture.close(pidFile))
-            assertTrue(live.isAlive, "es de una corrida en marcha")
-
-            pidFile.writeText("${unrelated.pid()} 2147483000") // dueño muerto, pero el pid ya no es de un logcat
-            assertNull(StaleCapture.close(pidFile))
-            assertTrue(unrelated.isAlive, "no mata procesos que no son adb logcat")
-
-            assertNull(StaleCapture.close(tmp.resolve("no-existe.pid")))
-        } finally {
-            live.destroyForcibly()
-            unrelated.destroyForcibly()
-        }
     }
 
     private companion object {

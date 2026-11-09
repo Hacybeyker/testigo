@@ -446,11 +446,11 @@ Un emulador que se reinicia solo, una pantalla que se apaga o un Maestro que se 
 - **Antes:** espera hasta 3 minutos a que Android termine de arrancar (`sys.boot_completed`) y a que resuelva la app. Enciende la pantalla si estaba apagada y descarta el bloqueo de deslizar. Un bloqueo con PIN, patrón o contraseña no se puede saltar: la corrida se detiene con código 2 y dice cómo quitarlo en el dispositivo de pruebas. Si el dispositivo no está listo a tiempo, la corrida también se detiene con código 2, y `summary.md` dice cuántas corridas no se ejecutaron.
 - **Reinicio:** compara el `boot_id` del kernel entre flows. Si el dispositivo se reinició (o dejó de responder) durante un flow, o antes de empezarlo, el flow queda anotado (`device_note` en `metadata.json`, sección *Dispositivo* de `summary.md`), un fallo lleva «no lo tomes como un defecto de la app» al principio de su motivo, y el flow siguiente reinstala el driver de Maestro.
 - **Tiempo máximo:** cada flow tiene un tiempo máximo (`--flow-timeout`, 10 minutos por defecto). Pasado, se corta Maestro y todo lo que lo lanzó.
-- **Logcat:** el buffer del dispositivo sube a 16 MiB mientras corre el flow y vuelve a su tamaño al terminar, para que una ráfaga de `adb shell input` no se coma líneas. El `adb logcat` de una corrida anterior que murió sin limpiar se cierra al empezar; el de otra corrida en marcha, no.
+- **Logcat:** el buffer del dispositivo sube a 16 MiB mientras corre el flow y vuelve a su tamaño al terminar (cada buffer al suyo), para que una ráfaga de `adb shell input` no se coma líneas. Si la corrida se corta, los devuelve también: con Ctrl+C o si Maestro falla, al momento; si murió sin poder limpiar (`kill -9`), la corrida siguiente lo hace antes de empezar, junto con cerrar el `adb logcat` que quedó abierto. El de otra corrida en marcha sobre el mismo dispositivo no se toca, y los buffers los devuelve la última en salir.
 
 `testigo` no cambia ajustes del dispositivo (no activa «mantener pantalla encendida» ni toca el tiempo de apagado). Si un flow espera mucho sin tocar la pantalla, el equipo puede apagarla: en un emulador, `adb shell svc power stayon true` y, si el emulador reporta que no está cargando, `adb shell dumpsys battery set ac 1` (se deshace con `dumpsys battery reset`).
 
-El runner guarda su estado en `~/.testigo/` (`installs.properties`, `cache/` y `run/`, con el pid de la captura de logcat en curso). Se puede borrar sin problema: la siguiente corrida reinstala.
+El runner guarda su estado en `~/.testigo/` (`installs.properties`, `cache/` y `run/`, con una anotación por cada captura de logcat en curso: su `adb logcat` y el tamaño original de los buffers). Se puede borrar sin problema: la siguiente corrida reinstala.
 
 `bundletool` no es una dependencia Maven: `./gradlew build` descarga una vez el jar oficial de GitHub, verifica su SHA-256 y lo deja en `.gradle/downloads/`. La distribución lo lleva en `tools/`, fuera del classpath, porque el jar trae su propia versión de Kotlin.
 
@@ -561,7 +561,7 @@ src/main/kotlin/testigo/
 ├── setup/      testigo setup: revisión de la máquina, descargas verificadas, instaladores y entorno de la terminal
 ├── scaffold/   testigo init: los archivos de una suite nueva
 ├── video/      screenrecord por segmentos y hooks del wrapper
-├── logs/       logcat de la app (buffer grande y cierre de capturas viejas) y crashes
+├── logs/       logcat de la app (buffer grande, que se devuelve aunque la corrida se corte, y cierre de capturas viejas) y crashes
 ├── network/    Chucker → texto, HAR 1.2, resumen por endpoint, alertas y llamadas por paso
 ├── redact/     presets, sanitización y leak scan
 ├── report/     reporte de Maestro autocontenido, git, summary.md, metadata.json y junit.xml
