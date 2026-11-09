@@ -23,6 +23,7 @@ Para actualizar desde 0.3.0: la misma línea de `install.sh`. Los comandos, `met
 ### Cambiado
 
 - El tiempo máximo de cada flow por defecto baja de 15 a 10 minutos: un Maestro colgado detenía la corrida el doble de lo necesario. Pasado el tiempo, también se cierran los procesos que lanzó, y el flow siguiente reinstala el driver de Maestro (lo mismo tras un reinicio del dispositivo).
+- Dependencias al día: Mordant 3.1.1, kotlinx.serialization 1.12.0 y sqlite-jdbc 3.54.1.0. Clikt, kaml, JUnit y Kotlin ya estaban en lo último estable; el Gradle wrapper sigue en 9.7.1, la más nueva que soporta Kotlin 2.4.21.
 - `logcat.txt` ya no pierde líneas en ráfagas: mientras corre el flow, el buffer de logcat del dispositivo sube a 16 MiB (`logcat -G`) y al terminar vuelve al tamaño que tenía. Si el dispositivo no deja cambiarlo, lo avisa y sigue.
 - Si una corrida anterior murió sin limpiar y dejó su `adb logcat` abierto, la siguiente lo cierra antes de empezar, para que no escriba líneas repetidas. Solo cierra el de una corrida que ya no existe: nunca el de otra en marcha ni un proceso que no sea `adb logcat`.
 

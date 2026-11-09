@@ -243,13 +243,13 @@ cd ~/proyectos/MiApp-e2e && claude --add-dir ~/proyectos/MiApp
 | Librería o herramienta | Licencia | Para qué |
 | --- | --- | --- |
 | [Clikt](https://github.com/ajalt/clikt) 5.1.0 | Apache 2.0 | Comandos y flags. |
-| [Mordant](https://github.com/ajalt/mordant) 3.1.0 | Apache 2.0 | La terminal y las listas del modo interactivo. |
+| [Mordant](https://github.com/ajalt/mordant) 3.1.1 | Apache 2.0 | La terminal y las listas del modo interactivo. |
 | [Colormath](https://github.com/ajalt/colormath) 3.7.0 | MIT | Colores de la terminal (dependencia de Mordant). |
 | [JNA](https://github.com/java-native-access/jna) 5.19.1 | Apache 2.0 o LGPL 2.1+ (se usa bajo Apache 2.0) | Acceso a la terminal (dependencia de Mordant). |
 | [kaml](https://github.com/charleskorn/kaml) 0.104.0, con [SnakeYAML Engine KMP](https://github.com/krzema12/snakeyaml-engine-kmp), [Okio](https://github.com/square/okio) y [urlencoder](https://github.com/ethauvin/urlencoder) | Apache 2.0 | Leer `testigo.yaml` y los flows. |
-| [kotlinx.serialization](https://github.com/Kotlin/kotlinx.serialization) 1.11.0 | Apache 2.0 | Los modelos de configuración. |
+| [kotlinx.serialization](https://github.com/Kotlin/kotlinx.serialization) 1.12.0 | Apache 2.0 | Los modelos de configuración. |
 | [Kotlin](https://github.com/JetBrains/kotlin) 2.4.21 y JetBrains Annotations | Apache 2.0 | El lenguaje y su runtime. |
-| [sqlite-jdbc](https://github.com/xerial/sqlite-jdbc) 3.53.4.0 | Apache 2.0, con una parte BSD de 2 cláusulas | Leer la base de Chucker. |
+| [sqlite-jdbc](https://github.com/xerial/sqlite-jdbc) 3.54.1.0 | Apache 2.0, con una parte BSD de 2 cláusulas | Leer la base de Chucker. |
 | [bundletool](https://github.com/google/bundletool) 1.18.3 | Apache 2.0 | Convertir un AAB en APKs. |
 | [Maestro](https://github.com/mobile-dev-inc/maestro) | Apache 2.0 | Ejecutar los flows. No viaja con `testigo`: lo descarga `testigo setup` o lo instalas tú. |
 | [Chucker](https://github.com/ChuckerTeam/chucker) | Apache 2.0 | Registrar la red dentro de la app. Va en la app, no en `testigo`. |

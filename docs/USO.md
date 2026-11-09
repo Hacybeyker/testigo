@@ -591,11 +591,11 @@ examples/demo-suite/   suite de ejemplo para probar el CLI
 | Kotlin | 2.4.21 |
 | Gradle (wrapper) | 9.7.1, la más nueva soportada oficialmente por Kotlin 2.4.21 |
 | Clikt | 5.1.0 |
-| Mordant | 3.1.0, forzada: la 3.0.2 que trae Clikt falla en Java 21 |
+| Mordant | 3.1.1, forzada: la 3.0.2 que trae Clikt falla en Java 21 |
 | kaml | 0.104.0 |
-| kotlinx.serialization | 1.11.0 |
+| kotlinx.serialization | 1.12.0 |
 | JUnit | 6.1.3 |
 | bundletool | 1.18.3, jar oficial de GitHub verificado por SHA-256 |
-| sqlite-jdbc | 3.53.4.0 |
+| sqlite-jdbc | 3.54.1.0 |
 
 Están en `gradle/libs.versions.toml`.
