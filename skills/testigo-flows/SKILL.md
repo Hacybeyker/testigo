@@ -135,6 +135,6 @@ Al terminar, deja en la suite y resume en la respuesta:
 - [references/android.md](references/android.md): cómo leer un proyecto Android para sacar selectores: módulos, XML, Compose, navegación, strings y flavors.
 - [references/sin-ids.md](references/sin-ids.md): apps sin ids o con pocos: cómo detectarlo, cómo seleccionar por texto y cómo priorizar los huecos.
 - [references/testigo.md](references/testigo.md): forma, política, variables, descubrimiento de flows, códigos de salida y cómo leer la evidencia.
-- [references/patrones.md](references/patrones.md): listas, diálogos que aparecen a veces, permisos, teclado, datos que cambian, bottom sheets, carruseles, WebView y sin red.
+- [references/patrones.md](references/patrones.md): esperas, estados que duran poco, toques frágiles, listas, capas opcionales (coach marks, ofertas, permisos), teclado, datos que cambian, bottom sheets, carruseles, WebView y sin red.
 - [references/casos.md](references/casos.md): catálogo de casos borde para planear.
 - [references/app-map.md](references/app-map.md): esquema del mapa.
