@@ -6,6 +6,11 @@ Los cambios importantes de `testigo`, de la versión más nueva a la más vieja.
 
 Para actualizar desde 0.3.0: la misma línea de `install.sh`. Los comandos, `metadata.json` (solo suma campos) y los códigos de salida son los de 0.3.0; la novedad es que un dispositivo que no responde ahora termina la corrida con código 2.
 
+### Cambiado
+
+- `logcat.txt` ya no pierde líneas en ráfagas: mientras corre el flow, el buffer de logcat del dispositivo sube a 16 MiB (`logcat -G`) y al terminar vuelve al tamaño que tenía. Si el dispositivo no deja cambiarlo, lo avisa y sigue.
+- Si una corrida anterior murió sin limpiar y dejó su `adb logcat` abierto, la siguiente lo cierra antes de empezar, para que no escriba líneas repetidas. Solo cierra el de una corrida que ya no existe: nunca el de otra en marcha ni un proceso que no sea `adb logcat`.
+
 ## 0.3.0 - 2026-10-20
 
 Para pasar de un zip instalado a mano (como `~/herramientas/testigo-0.2.0`): ejecuta la línea de `install.sh`, luego `~/.local/bin/testigo setup` y borra la carpeta vieja. El instalador y `testigo setup` avisan mientras la otra siga primero en el PATH. Los comandos, la evidencia, `metadata.json` y los códigos de salida son los de 0.2.0.

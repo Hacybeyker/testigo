@@ -232,6 +232,7 @@ class FlowExecutor(
         val duration = (System.nanoTime() - started).nanoseconds
         val videoOutcome = video?.finish(dir)
         val logOutcome = logCollector?.finish(dir, redactor)
+        logOutcome?.note?.let { progress("  ! logcat: $it") }
         val networkOutcome = networkCollector?.finish(dir, redactor)
         val consoleText = try {
             collect(dir, work, redactor)

@@ -93,12 +93,15 @@ class LogCaptureTest {
         capture.start(tmp)
         val outcome = capture.finish(tmp, Redactor(RedactRules.DEFAULT, mapOf("PASSWORD" to "Secreto123")))
 
-        assertEquals(listOf("/sdk/platform-tools/adb", "-s", "NJ4", "logcat", "-c"), adb.commands.first())
+        val logcat = adb.commands.map { it.drop(3) }.filter { it.firstOrNull() == "logcat" }
+        assertEquals(listOf("logcat", "-g"), logcat[0], "primero lee el tamaño del buffer para devolverlo")
+        assertEquals(listOf("logcat", "-G", "16M"), logcat[1])
+        assertEquals(listOf("logcat", "-c"), logcat[2], "limpia después de agrandar el buffer")
         assertTrue("--uid=10234" in launched.single(), launched.toString())
         assertEquals(tmp.resolve("logcat.txt"), outcome.logcat)
-        val logcat = outcome.logcat!!.readText()
-        assertTrue(logcat.contains("login con ****"), logcat)
-        assertTrue(logcat.contains("Authorization: ***"), logcat)
+        val text = outcome.logcat!!.readText()
+        assertTrue(text.contains("login con ****"), text)
+        assertTrue(text.contains("Authorization: ***"), text)
         assertEquals(listOf("crash.txt", "logcat.txt"), tmp.toFile().list()!!.sorted(), "el crudo no queda en la carpeta")
         assertEquals(tmp.resolve("crash.txt"), outcome.crashFile)
         assertTrue(outcome.crash!!.contains("CrashedByAdbException"), outcome.crash)
@@ -128,5 +131,118 @@ class LogCaptureTest {
         assertFalse(launched.single().any { it.startsWith("--uid") }, launched.toString())
         assertNull(outcome.crash)
         assertFalse(tmp.resolve("crash.txt").exists())
+    }
+
+    /** adb simulado que contesta `logcat -g` como un emulador con 256 KiB y deja anotado lo demás. */
+    private class SizedAdb(private val setWorks: Boolean = true) : CommandRunner {
+        val commands = mutableListOf<List<String>>()
+
+        override fun run(command: List<String>, timeout: Duration): CommandResult {
+            commands += command
+            return when {
+                command.contains("-g") -> CommandResult(
+                    0,
+                    "main: ring buffer is 256 KiB (13 KiB consumed), max entry is 5120 B, max payload is 4068 B\n" +
+                        "system: ring buffer is 256 KiB (1 KiB consumed), max entry is 5120 B, max payload is 4068 B\n",
+                    "",
+                )
+                command.contains("-G") -> if (setWorks) CommandResult(0, "", "") else CommandResult(1, "", "failed to set the buffer size")
+                else -> CommandResult(0, "", "")
+            }
+        }
+    }
+
+    private fun capture(runner: CommandRunner, pidFile: Path? = null) = LogCapture(
+        adb = Path.of("/sdk/platform-tools/adb"),
+        serial = "NJ4",
+        packageName = "com.empresa.app",
+        uid = 10234,
+        sdk = 33,
+        runner = runner,
+        pidFile = pidFile,
+        startProcess = { _, output ->
+            output.writeText("")
+            ProcessBuilder("sleep", "30").start()
+        },
+    )
+
+    @Test
+    @DisabledOnOs(OS.WINDOWS)
+    fun `agranda el buffer de logcat y al terminar lo deja como estaba`() {
+        val adb = SizedAdb()
+        val capture = capture(adb)
+
+        capture.start(tmp)
+        capture.finish(tmp, Redactor(RedactRules.NONE))
+
+        val sizes = adb.commands.filter { "-G" in it }.map { it.last() }
+        assertEquals(listOf("16M", "256K"), sizes, "sube a 16M y vuelve a los 256 KiB que tenía")
+    }
+
+    @Test
+    @DisabledOnOs(OS.WINDOWS)
+    fun `si el dispositivo no deja cambiar el buffer lo avisa y sigue`() {
+        val adb = SizedAdb(setWorks = false)
+        val capture = capture(adb)
+
+        capture.start(tmp)
+        val outcome = capture.finish(tmp, Redactor(RedactRules.NONE))
+
+        assertTrue(outcome.note!!.contains("no dejó agrandar el buffer"), outcome.note)
+        assertEquals(1, adb.commands.count { "-G" in it }, "no intenta restaurar lo que no cambió")
+        assertTrue(outcome.logcat!!.exists(), "la captura sigue funcionando")
+    }
+
+    @Test
+    fun `lee el tamano del buffer de logcat -g`() {
+        assertEquals("256K", LogBuffer.parseSize("main: ring buffer is 256 KiB (13 KiB consumed)"))
+        assertEquals("4M", LogBuffer.parseSize("main: ring buffer is 4 MiB (1 MiB consumed)"))
+        assertEquals("256K", LogBuffer.parseSize("main: ring buffer is 256Kb (12Kb consumed)"))
+        assertNull(LogBuffer.parseSize("no es la salida de logcat"))
+    }
+
+    @Test
+    @DisabledOnOs(OS.WINDOWS)
+    fun `cierra una captura vieja cuya corrida ya no existe`() {
+        // Un proceso que se hace pasar por un adb logcat huérfano.
+        val stale = ProcessBuilder("sh", "-c", "sleep 60; echo adb logcat").start()
+        try {
+            val pidFile = tmp.resolve("run/logcat-NJ4.pid")
+            pidFile.parent.toFile().mkdirs()
+            pidFile.writeText("${stale.pid()} 2147483000") // el dueño no existe
+            val capture = capture(SizedAdb(), pidFile)
+
+            capture.start(tmp)
+            val outcome = capture.finish(tmp, Redactor(RedactRules.NONE))
+
+            assertTrue(stale.waitFor(5, java.util.concurrent.TimeUnit.SECONDS), "la captura vieja se cerró")
+            assertTrue(outcome.note!!.contains("captura de logcat de una corrida anterior"), outcome.note)
+            assertFalse(pidFile.exists(), "al terminar no queda el pid")
+        } finally {
+            stale.destroyForcibly()
+        }
+    }
+
+    @Test
+    @DisabledOnOs(OS.WINDOWS)
+    fun `no toca la captura de otra corrida que sigue viva ni un proceso que no es logcat`() {
+        val live = ProcessBuilder("sh", "-c", "sleep 60; echo adb logcat").start()
+        val unrelated = ProcessBuilder("sleep", "60").start()
+        try {
+            val pidFile = tmp.resolve("logcat-NJ4.pid")
+
+            pidFile.writeText("${live.pid()} ${ProcessHandle.current().pid()}") // el dueño (esta JVM) está vivo
+            assertNull(StaleCapture.close(pidFile))
+            assertTrue(live.isAlive, "es de una corrida en marcha")
+
+            pidFile.writeText("${unrelated.pid()} 2147483000") // dueño muerto, pero el pid ya no es de un logcat
+            assertNull(StaleCapture.close(pidFile))
+            assertTrue(unrelated.isAlive, "no mata procesos que no son adb logcat")
+
+            assertNull(StaleCapture.close(tmp.resolve("no-existe.pid")))
+        } finally {
+            live.destroyForcibly()
+            unrelated.destroyForcibly()
+        }
     }
 }
