@@ -86,6 +86,8 @@ class RunReportTest {
         )
 
         val summary = RunReport.summary(interrupted, context(), tmp)
+        assertTrue(" · interrumpida · 1 de 1 pasaron · 2 sin correr · " in summary.lines()[1] + " · ", "el resumen no dice que pasaron todos: ${summary.lines()[1]}")
+        assertFalse("todos pasaron" in summary || "· pasó ·" in summary, summary)
         assertTrue("**Corrida interrumpida:** emulator-5554 no estuvo listo en 3m" in summary, summary)
         assertTrue("No corrieron 2 corridas." in summary, summary)
         assertTrue("### Dispositivo\n- **registro**: el dispositivo se reinició antes de este flow" in summary, summary)
@@ -98,6 +100,25 @@ class RunReportTest {
         val flow = (metadata["flows"] as List<*>).single() as Map<*, *>
         assertEquals(false, flow["timed_out"])
         assertEquals("el dispositivo se reinició antes de este flow", flow["device_note"])
+    }
+
+    @Test
+    fun `una corrida interrumpida cuenta los flows que corrieron y los que no, tambien con fallos o sin ninguno`() {
+        fun header(result: RunResult) = RunReport.summary(result, context(), tmp).lines()[1]
+        val base = result()
+        val reason = "emulator-5554 no estuvo listo en 3m: Android todavía está arrancando."
+
+        val someFailed = base.copy(
+            flows = listOf(flow("registro", FlowStatus.PASSED), flow("login", FlowStatus.FAILED, reason = "[Failed] login (5s) (Element not found: Hola)")),
+            aborted = reason,
+            notRun = 1,
+        )
+        assertTrue(" · interrumpida · 1 de 2 pasaron · 1 sin correr · " in header(someFailed) + " · ", header(someFailed))
+
+        val noneRan = base.copy(flows = emptyList(), aborted = reason, notRun = 4)
+        val none = header(noneRan)
+        assertTrue(" · interrumpida · 4 sin correr · " in none + " · ", none)
+        assertFalse("0 flows" in none || "todos pasaron" in none, "sin flows corridos no hay nada que haya pasado: $none")
     }
 
     @Test

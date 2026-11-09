@@ -129,8 +129,19 @@ object RunReport {
         appendLine("Carpeta: `${result.dir.displayFrom(cwd)}`")
     }
 
-    /** `3 flows`, `todos pasaron`; con `--repeat`, `5 flows × 3`, `14 de 15 pasaron` y cuántos son intermitentes. */
+    /**
+     * `3 flows`, `todos pasaron`; con `--repeat`, `5 flows × 3`, `14 de 15 pasaron` y cuántos son intermitentes. Una corrida
+     * interrumpida no puede decir «todos pasaron» de los que no llegaron a correr: `interrumpida`, cuántos de los que corrieron
+     * pasaron y cuántos quedaron sin correr.
+     */
     private fun outcome(result: RunResult): List<String> {
+        if (result.aborted != null) {
+            return listOfNotNull(
+                "interrumpida",
+                "${result.passed} de ${result.flows.size} pasaron".takeIf { result.flows.isNotEmpty() },
+                "${result.notRun} sin correr".takeIf { result.notRun > 0 },
+            )
+        }
         if (result.repeat > 1) {
             val flaky = result.flaky.size
             return listOfNotNull(
