@@ -85,6 +85,15 @@ class LogCaptureRecoveryTest {
 
     private fun sleeper(): Process = ProcessBuilder("sleep", "60").start().also { processes += it }
 
+    private fun startOf(process: Process): Long = Identity.startOf(process.toHandle())!!
+
+    /** La anotación de una corrida cuyo dueño es [owner], con la hora de arranque real de cada proceso. */
+    private fun recordOf(owner: Long, ownerStart: Long?, logcat: Process? = null, buffers: Map<String, String> = emptyMap()) =
+        CaptureRecord(ownerPid = owner, ownerStart = ownerStart, logcatPid = logcat?.pid(), logcatStart = logcat?.let { startOf(it) }, buffers = buffers)
+
+    /** El pid del dueño muerto: ningún sistema operativo llega a asignar un pid tan alto. */
+    private val deadOwner = 2147483000L
+
     /** Una captura sobre NJ4; `raws` recoge dónde escribe el logcat crudo. */
     private fun capture(logd: CommandRunner, raws: MutableList<Path> = mutableListOf(), launched: MutableList<Process> = mutableListOf()) =
         LogCapture(
@@ -151,7 +160,7 @@ class LogCaptureRecoveryTest {
         Cleanup.unregister(first) // kill -9: ningún shutdown hook corre
         val record = store.entries().single().second!!
         store.delete(store.file(ProcessHandle.current().pid()))
-        store.write(store.file(2147483000), record.copy(ownerPid = 2147483000)) // el dueño ya no existe
+        store.write(store.file(deadOwner), record.copy(ownerPid = deadOwner)) // el dueño ya no existe
         assertEquals(setOf("16M"), logd.sizes.values.toSet())
 
         val second = capture(logd)
@@ -165,7 +174,7 @@ class LogCaptureRecoveryTest {
     @Test
     fun `cierra una captura vieja cuya corrida ya no existe`() {
         val stale = fakeLogcat()
-        store.write(store.file(2147483000), CaptureRecord(ownerPid = 2147483000, logcatPid = stale.pid()))
+        store.write(store.file(deadOwner), recordOf(deadOwner, null, stale))
         val capture = capture(FakeLogd(original))
 
         capture.start(tmp)
@@ -177,25 +186,77 @@ class LogCaptureRecoveryTest {
     }
 
     @Test
-    fun `no toca la captura de otra corrida que sigue viva ni un proceso que no es logcat`() {
+    fun `no toca la captura de otra corrida que sigue viva`() {
         val live = fakeLogcat()
-        val unrelated = sleeper()
-        val noop: (Map<String, String>) -> Boolean = { true }
+        val me = ProcessHandle.current()
+        val liveFile = store.file(me.pid())
+        store.write(liveFile, recordOf(me.pid(), Identity.startOf(me), live)) // el dueño (esta JVM) está vivo
 
-        val liveFile = store.file(ProcessHandle.current().pid())
-        store.write(liveFile, CaptureRecord(ownerPid = ProcessHandle.current().pid(), logcatPid = live.pid())) // el dueño (esta JVM) está vivo
-        assertEquals(emptyList<String>(), StaleCapture.close(store, noop))
+        assertEquals(emptyList<String>(), StaleCapture.close(store, "NJ4") { true })
+
         assertTrue(live.isAlive, "es de una corrida en marcha")
         assertTrue(liveFile.exists(), "y su anotación sigue ahí")
+        assertEquals(emptyList<String>(), StaleCapture.close(CaptureStore(tmp.resolve("no-existe")), "NJ4") { true })
+    }
 
-        store.delete(liveFile)
-        val deadFile = store.file(2147483000)
-        store.write(deadFile, CaptureRecord(ownerPid = 2147483000, logcatPid = unrelated.pid())) // dueño muerto, pero el pid ya no es de un logcat
-        assertEquals(emptyList<String>(), StaleCapture.close(store, noop))
-        assertTrue(unrelated.isAlive, "no mata procesos que no son adb logcat")
+    @Test
+    fun `si el pid de la captura ya es de otro proceso no lo cierra, aunque sea un adb logcat de otra hora`() {
+        val reused = fakeLogcat() // un adb -s NJ4 logcat de verdad, pero no el que anotó la corrida muerta
+        val deadFile = store.file(deadOwner)
+        store.write(deadFile, recordOf(deadOwner, null, reused).copy(logcatStart = startOf(reused) - 3_600_000))
+
+        assertEquals(emptyList<String>(), StaleCapture.close(store, "NJ4") { true })
+
+        assertTrue(reused.isAlive, "arrancó una hora después de lo anotado: el pid se reusó")
         assertFalse(deadFile.exists(), "la anotación vieja sí se borra")
+    }
 
-        assertEquals(emptyList<String>(), StaleCapture.close(CaptureStore(tmp.resolve("no-existe")), noop))
+    @Test
+    fun `sin la hora de arranque anotada no cierra nada`() {
+        val logcat = fakeLogcat()
+        store.write(store.file(deadOwner), recordOf(deadOwner, null, logcat).copy(logcatStart = null))
+
+        assertEquals(emptyList<String>(), StaleCapture.close(store, "NJ4") { true })
+
+        assertTrue(logcat.isAlive, "no se puede saber que es el mismo proceso: se deja")
+    }
+
+    @Test
+    fun `no cierra el adb logcat de otro dispositivo`() {
+        val other = ProcessBuilder("sh", "-c", "sleep 60; true", "adb", "-s", "OTRO", "logcat").start().also { processes += it }
+        store.write(store.file(deadOwner), recordOf(deadOwner, null, other))
+
+        assertEquals(emptyList<String>(), StaleCapture.close(store, "NJ4") { true })
+
+        assertTrue(other.isAlive, "es el logcat de OTRO, aunque el pid y la hora calcen")
+    }
+
+    @Test
+    fun `no cierra un tail de logcat txt ni un proceso que no es adb logcat`() {
+        val log = tmp.resolve("logcat.txt").also { it.writeText("") }
+        val tail = ProcessBuilder("tail", "-f", log.toString()).start().also { processes += it }
+        val unrelated = sleeper()
+        store.write(store.file(deadOwner), recordOf(deadOwner, null, tail))
+        store.write(store.file(deadOwner - 1), recordOf(deadOwner - 1, null, unrelated))
+
+        assertEquals(emptyList<String>(), StaleCapture.close(store, "NJ4") { true })
+
+        assertTrue(tail.isAlive, "tail -f logcat.txt tiene \"logcat\" en su línea de comando, pero no es un adb logcat")
+        assertTrue(unrelated.isAlive)
+    }
+
+    @Test
+    fun `un dueno cuyo pid ahora es de otro proceso ya no existe, y uno que arranco a la misma hora sigue vivo`() {
+        val owner = sleeper() // el pid está vivo, pero lo tiene un proceso que arrancó mucho después de la corrida anotada
+        val orphan = fakeLogcat()
+        store.write(store.file(owner.pid()), recordOf(owner.pid(), startOf(owner) - 3_600_000, orphan))
+        assertEquals(1, StaleCapture.close(store, "NJ4") { true }.size, "su dueño de verdad ya no existe: cierra el logcat")
+        assertTrue(orphan.waitFor(5, TimeUnit.SECONDS))
+
+        val stillOrphan = fakeLogcat()
+        store.write(store.file(owner.pid()), recordOf(owner.pid(), startOf(owner), stillOrphan))
+        assertEquals(emptyList<String>(), StaleCapture.close(store, "NJ4") { true }, "este dueño sí es el que arrancó a esa hora")
+        assertTrue(stillOrphan.isAlive)
     }
 
     @Test
@@ -204,7 +265,7 @@ class LogCaptureRecoveryTest {
         val ownerA = sleeper() // otra corrida de testigo, viva
         val logcatA = fakeLogcat()
         val fileA = store.file(ownerA.pid())
-        store.write(fileA, CaptureRecord(ownerPid = ownerA.pid(), logcatPid = logcatA.pid(), buffers = original))
+        store.write(fileA, recordOf(ownerA.pid(), startOf(ownerA), logcatA, original))
         logd.enlarged() // A ya agrandó los buffers
 
         val b = capture(logd)
@@ -224,7 +285,7 @@ class LogCaptureRecoveryTest {
     fun `la ultima corrida en salir devuelve los buffers, con el tamano original que anoto la primera`() {
         val logd = FakeLogd(original)
         val ownerA = sleeper()
-        store.write(store.file(ownerA.pid()), CaptureRecord(ownerPid = ownerA.pid(), logcatPid = fakeLogcat().pid(), buffers = original))
+        store.write(store.file(ownerA.pid()), recordOf(ownerA.pid(), startOf(ownerA), fakeLogcat(), original))
         logd.enlarged()
         val b = capture(logd)
         b.start(tmp)
