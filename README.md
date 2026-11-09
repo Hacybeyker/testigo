@@ -272,7 +272,7 @@ Está escrito en Kotlin, con Gradle. Se necesita Java 17 o más. La primera comp
 ./gradlew build          # tests, y en build/distributions/ el .zip y el .tar.gz, el .sha256 de cada uno y SHA256SUMS
 ./gradlew installDist    # el CLI en build/install/testigo/bin/testigo, sin archivos
 sh scripts/test-install.sh build/distributions   # prueba install.sh con ese build, sin tocar tu ~/.testigo
-TESTIGO_ARCHIVE=build/distributions/testigo-0.3.0-dev.tar.gz sh install.sh   # lo instala como uno publicado
+TESTIGO_ARCHIVE=build/distributions/testigo-0.4.0-dev.tar.gz sh install.sh   # lo instala como uno publicado
 ```
 
 En cada push y pull request, la [CI](.github/workflows/ci.yml) compila, corre los tests, revisa los scripts con ShellCheck y prueba `install.sh` en Linux (x64 y arm64) y macOS (Apple Silicon e Intel).

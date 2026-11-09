@@ -99,7 +99,7 @@ Para compilar sí hace falta Java 17 o más (`./gradlew` lo usa):
 ```bash
 cd testigo
 ./gradlew build                                                            # tests, y el .tar.gz y el .zip en build/distributions/
-TESTIGO_ARCHIVE=build/distributions/testigo-0.3.0-dev.tar.gz sh install.sh  # instálalo como uno publicado
+TESTIGO_ARCHIVE=build/distributions/testigo-0.4.0-dev.tar.gz sh install.sh  # instálalo como uno publicado
 ```
 
 ### Actualizar el CLI

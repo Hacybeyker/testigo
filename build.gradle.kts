@@ -209,6 +209,8 @@ tasks.named<JavaExec>("run") {
 
 tasks.test {
     useJUnitPlatform()
-    // Hay tests que corren los scripts de la skill: si uno cambia, los tests se vuelven a correr.
+    // Hay tests que corren los scripts de la skill y que leen la documentación: si cambian, los tests se vuelven a correr.
     inputs.dir("skills")
+    inputs.dir("docs")
+    inputs.file("README.md")
 }
