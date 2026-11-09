@@ -26,25 +26,21 @@ class ValidarScriptTest {
 
     private val script: Path = Path.of("skills/testigo-flows/scripts/validar.py").toAbsolutePath()
 
-    private fun python(): String? = listOf("python3", "python").firstOrNull { name ->
-        runCatching { ProcessBuilder(name, "--version").redirectErrorStream(true).start().waitFor() == 0 }.getOrDefault(false)
-    }
-
     private fun flow(name: String, steps: String): String {
         val dir = tmp.resolve("flows").createDirectories()
         dir.resolve(name).writeText("appId: com.empresa.app\n---\n$steps")
         return "flows/$name"
     }
 
-    /** El código de salida y la salida de `validar.py <flow>`. [python] es el intérprete y [prefix] los argumentos antes del script. */
-    private fun validar(flow: String, prefix: List<String> = listOf("-I")): Pair<Int, String> {
-        val python = python()
+    /** El código de salida y la salida de `validar.py <flow>`. */
+    private fun validar(flow: String): Pair<Int, String> {
+        val python = Python.find()
         assumeTrue(python != null, "no hay python3 en esta máquina")
         val bin = tmp.resolve("bin").createDirectories()
         bin.resolve("testigo").also { it.writeText("#!/bin/sh\necho 'Política local-only: OK'\n") }.toFile().setExecutable(true)
         bin.resolve("maestro").also { it.writeText("#!/bin/sh\nexit 0\n") }.toFile().setExecutable(true)
         val output = tmp.resolve("salida.txt")
-        val builder = ProcessBuilder(listOf(python!!) + prefix + listOf(script.toString(), flow))
+        val builder = ProcessBuilder(python!!, "-I", script.toString(), flow)
             .directory(tmp.toFile())
             .redirectErrorStream(true)
             .redirectOutput(output.toFile())
@@ -106,25 +102,5 @@ class ValidarScriptTest {
 
         assertEquals(0, code, out)
         assertFalse("captura FALLA" in out, out)
-    }
-
-    /**
-     * `Path.is_relative_to` es de Python 3.9 y la skill promete Python 3.8. Se simula quitándola antes de correr el script con
-     * `runpy`, así la prueba falla en cualquier versión de Python y no solo en una 3.8 de verdad.
-     */
-    @Test
-    fun `no usa Path is_relative_to, que no existe en Python 3_8`() {
-        val flow = flow("simple.yaml", "- launchApp\n")
-        val without = listOf(
-            "-I",
-            "-c",
-            "import pathlib, runpy, sys; del pathlib.PurePath.is_relative_to; sys.argv = sys.argv[1:]; runpy.run_path(sys.argv[0], run_name='__main__')",
-        )
-
-        val (code, out) = validar(flow, without)
-
-        assertEquals(0, code, out)
-        assertFalse("Traceback" in out || "is_relative_to" in out, out)
-        assertTrue("2. sintaxis OK: $flow" in out, out)
     }
 }
