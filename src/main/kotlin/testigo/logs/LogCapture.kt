@@ -61,8 +61,8 @@ class LogCapture(
     private var process: Process? = null
     private var raw: Path? = null
 
-    /** El tamaño que tenía el buffer antes de agrandarlo; null si no se cambió o no se pudo leer. */
-    private var restoreBuffer: String? = null
+    /** El tamaño que tenía cada buffer antes de agrandarlos; null si no se cambiaron. */
+    private var restoreBuffer: Map<String, String>? = null
     private val notes = mutableListOf<String>()
 
     override fun start(dir: Path) {
@@ -87,15 +87,19 @@ class LogCapture(
             if (!it.waitFor(5, TimeUnit.SECONDS)) it.destroyForcibly()
         }
         pidFile?.let { runCatching { it.deleteIfExists() } }
-        restoreBuffer?.let { size -> runCatching { runner.run(adb(listOf("logcat", "-G", size)), 30.seconds) } }
         val logcat = raw?.takeIf { it.exists() }?.let { file ->
             dir.resolve("logcat.txt").also { it.writeText(redactor.text(EvidenceFiles.read(file))) }
         }
         raw?.let { RawEvidence.keepOrDelete(it, dir, "logcat.txt", keepRaw) }
         Cleanup.unregister(this)
 
+        // Primero se lee el buffer de crashes: devolver los buffers a un tamaño menor poda lo más viejo de cada uno.
+        val buffer = try {
+            runner.run(adb(listOf("logcat", "-b", "crash", "-d", "-v", "threadtime")), 30.seconds)
+        } finally {
+            restoreBuffer?.let { sizes -> restore(sizes) }
+        }
         val note = notes.takeIf { it.isNotEmpty() }?.joinToString(" · ")
-        val buffer = runner.run(adb(listOf("logcat", "-b", "crash", "-d", "-v", "threadtime")), 30.seconds)
         val crash = buffer.takeIf { it.ok }?.let { CrashLog.extract(it.stdout, packageName) }
             ?: return LogOutcome(logcat, null, null, note)
         val crashFile = dir.resolve("crash.txt").also { it.writeText(redactor.text(crash)) }
@@ -103,18 +107,30 @@ class LogCapture(
     }
 
     /**
-     * Sube el buffer a [bufferSize]. Un dispositivo que no lo deja cambiar (algunos de fábrica) sigue con el suyo: no es
-     * un error, solo hay más riesgo de perder líneas.
+     * Sube los buffers a [bufferSize]. Un dispositivo que no lo deja cambiar (algunos de fábrica) sigue con el suyo: no es
+     * un error, solo hay más riesgo de perder líneas. Si no se puede leer el tamaño que tenían, no se agrandan: no habría
+     * cómo devolverlos, y `logcat -G` se queda aunque el dispositivo se reinicie.
      */
     private fun enlargeBuffer() {
         val size = bufferSize ?: return
         val current = runCatching { runner.run(adb(listOf("logcat", "-g")), 30.seconds) }.getOrNull()
-            ?.takeIf { it.ok }?.let { LogBuffer.parseSize(it.stdout) }
+            ?.takeIf { it.ok }?.let { LogBuffer.parseSizes(it.stdout) }.orEmpty()
+        if (current.isEmpty()) {
+            notes += "no pude leer el tamaño del buffer de logcat (logcat -g), así que no lo agrandé: si faltan líneas, es por eso"
+            return
+        }
         val set = runCatching { runner.run(adb(listOf("logcat", "-G", size)), 30.seconds) }.getOrNull()
         if (set?.ok == true) {
             restoreBuffer = current
         } else {
             notes += "el dispositivo no dejó agrandar el buffer de logcat a $size: si faltan líneas, es por eso"
+        }
+    }
+
+    /** Cada buffer vuelve a su propio tamaño; los que tenían el mismo se piden juntos. */
+    private fun restore(sizes: Map<String, String>) {
+        sizes.entries.groupBy({ it.value }, { it.key }).forEach { (size, buffers) ->
+            runCatching { runner.run(adb(listOf("logcat", "-b", buffers.joinToString(","), "-G", size)), 30.seconds) }
         }
     }
 
@@ -131,13 +147,29 @@ class LogCapture(
 
 /** Lee lo que imprime `logcat -g`. */
 internal object LogBuffer {
-    private val SIZE = Regex("""ring buffer is (\d+(?:\.\d+)?)\s*([KMG])i?[Bb]""")
+    private val SIZE = Regex("""^\s*(\w+):\s*ring buffer is (\d+(?:\.\d+)?)\s*([KMG])i?[Bb]""", RegexOption.MULTILINE)
 
-    /** `main: ring buffer is 256 KiB (13 KiB consumed)…` → `256K`, como lo acepta `logcat -G`. null si no se entiende. */
-    fun parseSize(output: String): String? {
-        val match = SIZE.find(output) ?: return null
-        val amount = match.groupValues[1].toDoubleOrNull() ?: return null
-        return "${Math.round(amount)}${match.groupValues[2]}"
+    /**
+     * Una línea por buffer: `main: ring buffer is 256 KiB (13 KiB consumed)…` → `main` a `256K`, el tamaño como lo acepta
+     * `logcat -G`. Vacío si no se entiende nada.
+     */
+    fun parseSizes(output: String): Map<String, String> {
+        val sizes = linkedMapOf<String, String>()
+        for (match in SIZE.findAll(output)) {
+            val amount = match.groupValues[2].toDoubleOrNull() ?: continue
+            val unit = when (match.groupValues[3]) {
+                "G" -> 1024 * 1024
+                "M" -> 1024
+                else -> 1
+            }
+            val kib = Math.round(amount * unit)
+            sizes[match.groupValues[1]] = when {
+                kib % (1024 * 1024) == 0L -> "${kib / (1024 * 1024)}G"
+                kib % 1024 == 0L -> "${kib / 1024}M"
+                else -> "${kib}K"
+            }
+        }
+        return sizes
     }
 }
 

@@ -64,7 +64,7 @@ class LogCaptureTest {
 
         override fun run(command: List<String>, timeout: Duration): CommandResult {
             commands += command
-            return CommandResult(0, if ("crash" in command) crash else "", "")
+            return CommandResult(0, if ("-g" in command) EMULATOR_SIZES else if ("-d" in command && "crash" in command) crash else "", "")
         }
     }
 
@@ -133,23 +133,21 @@ class LogCaptureTest {
         assertFalse(tmp.resolve("crash.txt").exists())
     }
 
-    /** adb simulado que contesta `logcat -g` como un emulador con 256 KiB y deja anotado lo demás. */
-    private class SizedAdb(private val setWorks: Boolean = true) : CommandRunner {
+    /** adb simulado que contesta `logcat -g` como un emulador con 256 KiB (o con [sizes], o con un fallo) y anota lo demás. */
+    private class SizedAdb(private val setWorks: Boolean = true, private val sizes: String? = EMULATOR_SIZES) : CommandRunner {
         val commands = mutableListOf<List<String>>()
 
         override fun run(command: List<String>, timeout: Duration): CommandResult {
             commands += command
             return when {
-                command.contains("-g") -> CommandResult(
-                    0,
-                    "main: ring buffer is 256 KiB (13 KiB consumed), max entry is 5120 B, max payload is 4068 B\n" +
-                        "system: ring buffer is 256 KiB (1 KiB consumed), max entry is 5120 B, max payload is 4068 B\n",
-                    "",
-                )
+                command.contains("-g") -> if (sizes != null) CommandResult(0, sizes, "") else CommandResult(1, "", "logcat: permission denied")
                 command.contains("-G") -> if (setWorks) CommandResult(0, "", "") else CommandResult(1, "", "failed to set the buffer size")
                 else -> CommandResult(0, "", "")
             }
         }
+
+        /** Los argumentos de logcat de cada comando, sin `adb -s <serial>`. */
+        val logcat: List<List<String>> get() = commands.map { it.drop(3) }.filter { it.firstOrNull() == "logcat" }
     }
 
     private fun capture(runner: CommandRunner, pidFile: Path? = null) = LogCapture(
@@ -175,8 +173,12 @@ class LogCaptureTest {
         capture.start(tmp)
         capture.finish(tmp, Redactor(RedactRules.NONE))
 
-        val sizes = adb.commands.filter { "-G" in it }.map { it.last() }
-        assertEquals(listOf("16M", "256K"), sizes, "sube a 16M y vuelve a los 256 KiB que tenía")
+        val sizes = adb.logcat.filter { "-G" in it }
+        assertEquals(
+            listOf(listOf("logcat", "-G", "16M"), listOf("logcat", "-b", "main,system", "-G", "256K")),
+            sizes,
+            "sube a 16M y vuelve a los 256 KiB que tenía",
+        )
     }
 
     @Test
@@ -194,11 +196,73 @@ class LogCaptureTest {
     }
 
     @Test
-    fun `lee el tamano del buffer de logcat -g`() {
-        assertEquals("256K", LogBuffer.parseSize("main: ring buffer is 256 KiB (13 KiB consumed)"))
-        assertEquals("4M", LogBuffer.parseSize("main: ring buffer is 4 MiB (1 MiB consumed)"))
-        assertEquals("256K", LogBuffer.parseSize("main: ring buffer is 256Kb (12Kb consumed)"))
-        assertNull(LogBuffer.parseSize("no es la salida de logcat"))
+    fun `lee el tamano de cada buffer de logcat -g`() {
+        assertEquals(mapOf("main" to "256K", "system" to "256K"), LogBuffer.parseSizes(EMULATOR_SIZES))
+        assertEquals(mapOf("main" to "4M"), LogBuffer.parseSizes("main: ring buffer is 4 MiB (1 MiB consumed)"))
+        assertEquals(mapOf("main" to "256K"), LogBuffer.parseSizes("main: ring buffer is 256Kb (12Kb consumed)"), "Android 9 y anteriores")
+        assertEquals(mapOf("main" to "1536K", "crash" to "1G"), LogBuffer.parseSizes("main: ring buffer is 1.5 MiB (1 MiB consumed)\ncrash: ring buffer is 1 GiB (0 B consumed)"))
+        assertTrue(LogBuffer.parseSizes("no es la salida de logcat").isEmpty())
+    }
+
+    /** Lo que imprime `logcat -g` en Android 17 (API 37), capturado de un emulador: cuatro buffers, no solo `main`. */
+    @Test
+    fun `lee la salida real de logcat -g de un emulador con cuatro buffers`() {
+        val real = """
+            main: ring buffer is 2 MiB (1 MiB consumed, 6 MiB readable), max entry is 5120 B, max payload is 4068 B
+            system: ring buffer is 2 MiB (743 KiB consumed, 1 MiB readable), max entry is 5120 B, max payload is 4068 B
+            crash: ring buffer is 2 MiB (0 B consumed, 0 B readable), max entry is 5120 B, max payload is 4068 B
+            kernel: ring buffer is 2 MiB (0 B consumed, 0 B readable), max entry is 5120 B, max payload is 4068 B
+        """.trimIndent()
+
+        assertEquals(mapOf("main" to "2M", "system" to "2M", "crash" to "2M", "kernel" to "2M"), LogBuffer.parseSizes(real))
+    }
+
+    @Test
+    @DisabledOnOs(OS.WINDOWS)
+    fun `cada buffer vuelve a su propio tamano, no al de main`() {
+        val adb = SizedAdb(
+            sizes = "main: ring buffer is 256 KiB (13 KiB consumed)\nsystem: ring buffer is 256 KiB (1 KiB consumed)\n" +
+                "crash: ring buffer is 64 KiB (0 B consumed)\n",
+        )
+        val capture = capture(adb)
+
+        capture.start(tmp)
+        capture.finish(tmp, Redactor(RedactRules.NONE))
+
+        val restored = adb.logcat.filter { "-G" in it && "16M" !in it }
+        assertEquals(
+            listOf(listOf("logcat", "-b", "main,system", "-G", "256K"), listOf("logcat", "-b", "crash", "-G", "64K")),
+            restored,
+            "el buffer de crashes de 64 KiB no se sube a 256 KiB",
+        )
+    }
+
+    @Test
+    @DisabledOnOs(OS.WINDOWS)
+    fun `lee el buffer de crashes antes de devolver el tamano, que poda lo mas viejo`() {
+        val adb = SizedAdb()
+        val capture = capture(adb)
+
+        capture.start(tmp)
+        capture.finish(tmp, Redactor(RedactRules.NONE))
+
+        val crashRead = adb.logcat.indexOfFirst { "crash" in it && "-d" in it }
+        val restore = adb.logcat.indexOfLast { "-G" in it }
+        assertTrue(crashRead in 0 until restore, "primero leer los crashes ($crashRead), luego achicar ($restore): ${adb.logcat}")
+    }
+
+    @Test
+    @DisabledOnOs(OS.WINDOWS)
+    fun `si no puede leer el tamano del buffer no lo agranda, porque no podria devolverlo, y lo avisa`() {
+        val adb = SizedAdb(sizes = null)
+        val capture = capture(adb)
+
+        capture.start(tmp)
+        val outcome = capture.finish(tmp, Redactor(RedactRules.NONE))
+
+        assertEquals(0, adb.commands.count { "-G" in it }, "sin saber cómo estaba, el buffer no se toca: logcat -G persiste")
+        assertTrue(outcome.note!!.contains("no pude leer el tamaño del buffer"), outcome.note)
+        assertTrue(outcome.logcat!!.exists(), "la captura sigue funcionando")
     }
 
     @Test
@@ -244,5 +308,10 @@ class LogCaptureTest {
             live.destroyForcibly()
             unrelated.destroyForcibly()
         }
+    }
+
+    private companion object {
+        const val EMULATOR_SIZES = "main: ring buffer is 256 KiB (13 KiB consumed), max entry is 5120 B, max payload is 4068 B\n" +
+            "system: ring buffer is 256 KiB (1 KiB consumed), max entry is 5120 B, max payload is 4068 B\n"
     }
 }
