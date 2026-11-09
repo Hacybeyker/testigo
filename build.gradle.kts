@@ -11,7 +11,7 @@ plugins {
 }
 
 group = "testigo"
-version = "0.3.0"
+version = "0.4.0-dev"
 
 // Java 17 es el mínimo que ya exigen Maestro y bundletool: no sumamos ningún runtime.
 java {
