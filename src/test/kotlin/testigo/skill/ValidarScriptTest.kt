@@ -107,4 +107,24 @@ class ValidarScriptTest {
         assertEquals(0, code, out)
         assertFalse("captura FALLA" in out, out)
     }
+
+    /**
+     * `Path.is_relative_to` es de Python 3.9 y la skill promete Python 3.8. Se simula quitándola antes de correr el script con
+     * `runpy`, así la prueba falla en cualquier versión de Python y no solo en una 3.8 de verdad.
+     */
+    @Test
+    fun `no usa Path is_relative_to, que no existe en Python 3_8`() {
+        val flow = flow("simple.yaml", "- launchApp\n")
+        val without = listOf(
+            "-I",
+            "-c",
+            "import pathlib, runpy, sys; del pathlib.PurePath.is_relative_to; sys.argv = sys.argv[1:]; runpy.run_path(sys.argv[0], run_name='__main__')",
+        )
+
+        val (code, out) = validar(flow, without)
+
+        assertEquals(0, code, out)
+        assertFalse("Traceback" in out || "is_relative_to" in out, out)
+        assertTrue("2. sintaxis OK: $flow" in out, out)
+    }
 }
