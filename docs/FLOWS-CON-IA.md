@@ -8,6 +8,7 @@
 - **Elige selectores sin adivinar:** primero ids (`android:id` o `testTag` con `testTagsAsResourceId`), después content description y texto de `strings.xml`. Sirve para Views XML, Compose y apps sin ids.
 - **Valida cada flow en cuatro niveles:** forma, política y sintaxis sin dispositivo; selectores contra el mapa; una corrida real; y tres corridas seguidas sin fallos (`testigo run --repeat 3`).
 - **Exige asserts que puedan fallar:** verifica el estado contrario antes de la acción, para que un flow en verde pruebe algo.
+- **Trae las recetas de las trampas de Maestro**, aprendidas corriendo flows de verdad: cómo esperar (no hay espera fija), por qué un spinner no se alcanza a ver, los toques que no llegan tras un scroll, las capas opcionales (coach marks, ofertas), `takeScreenshot`, `testTagsAsResourceId` en cada diálogo, las vistas con nodos virtuales de accesibilidad y cómo contar las llamadas al backend desde un paso (`network-steps.txt`). `validar.py` avisa antes de correr de las que puede detectar.
 - **Deja la lista de lo que falta en la app** (`huecos.md`): cada elemento sin selector estable, con el cambio de código que lo arregla.
 
 ## Requisitos
@@ -40,7 +41,7 @@ cd mi-suite
 claude --add-dir ~/proyectos/mi-app
 ```
 
-Antes, `testigo doctor` en la suite: si avisa de un Xiaomi sin «Instalar vía USB» o de un dispositivo de 16 KB, arréglalo primero, o los flows saldrán intermitentes por el dispositivo y no por la app.
+Antes, `testigo doctor` en la suite: si avisa de un Xiaomi sin «Instalar vía USB» o de un dispositivo de 16 KB, arréglalo primero, o los flows saldrán intermitentes por el dispositivo y no por la app. Quita también el PIN o el patrón del dispositivo de pruebas: `testigo` enciende la pantalla y quita el bloqueo de deslizar antes de cada flow, pero no puede saltarse un PIN y detiene la corrida.
 
 Y pídele lo que necesitas con `/testigo-flows`. La skill no recorre toda la app por su cuenta: trabaja sobre el alcance que pides.
 
@@ -97,4 +98,5 @@ Una vez armado el mapa, cada flow cuesta unos 15 a 20 mil tokens dentro de una t
 - **OTP, 2FA, captcha y biometría** no se automatizan: hace falta un usuario o un build de QA que los salte.
 - **Avisos del sistema** que tapan la app (por ejemplo, «Android App Compatibility» en un dispositivo de 16 KB con un build sin alinear) vuelven intermitentes los flows. La skill los cierra cuando aparecen, pero lo estable es un dispositivo sin ellos.
 - **MIUI** pide confirmar la instalación del driver de Maestro en cada corrida: activa «Instalar vía USB» en las opciones de desarrollador. `testigo doctor` avisa de esto y del caso de 16 KB.
+- **Estados que duran poco** (un spinner, una cuenta regresiva): Maestro espera a que la pantalla se asiente después de cada toque y no los alcanza a ver. La skill verifica el resultado en lugar del estado de paso, y pide en `huecos.md` que el build de pruebas los alargue.
 - Lo visual (colores, tamaños) no se compara: Maestro ve el árbol de accesibilidad, no la imagen.
