@@ -9,16 +9,16 @@
 | Componente | Versión | Licencia | Para qué la usa `testigo` |
 | --- | --- | --- | --- |
 | [Kotlin stdlib](https://github.com/JetBrains/kotlin) | 2.4.21 | Apache 2.0 | El runtime de Kotlin, el lenguaje del runner. |
-| [kotlinx.serialization](https://github.com/Kotlin/kotlinx.serialization) (core) | 1.11.0 | Apache 2.0 | Los modelos de `testigo.yaml` y de los headers de los flows. |
+| [kotlinx.serialization](https://github.com/Kotlin/kotlinx.serialization) (core) | 1.12.0 | Apache 2.0 | Los modelos de `testigo.yaml` y de los headers de los flows. |
 | [Clikt](https://github.com/ajalt/clikt) (`clikt`, `clikt-mordant`) | 5.1.0 | Apache 2.0 | Comandos, flags, ayuda (`--help`) y validación de opciones. |
-| [Mordant](https://github.com/ajalt/mordant) (`mordant`, `mordant-omnibus`, `mordant-jvm-jna`, `mordant-jvm-ffm`, `mordant-jvm-graal-ffi`) | 3.1.0 | Apache 2.0 | La terminal y las listas de selección del modo interactivo. |
+| [Mordant](https://github.com/ajalt/mordant) (`mordant`, `mordant-omnibus`, `mordant-jvm-jna`, `mordant-jvm-ffm`, `mordant-jvm-graal-ffi`) | 3.1.1 | Apache 2.0 | La terminal y las listas de selección del modo interactivo. |
 | [Colormath](https://github.com/ajalt/colormath) | 3.7.0 | MIT | Colores de la terminal; dependencia de Mordant. |
 | [JNA](https://github.com/java-native-access/jna) | 5.19.1 | Apache 2.0 o LGPL 2.1 o posterior, a elección; `testigo` la usa bajo Apache 2.0 | Acceso nativo a la terminal; dependencia de Mordant. |
 | [kaml](https://github.com/charleskorn/kaml) | 0.104.0 | Apache 2.0 | Leer `testigo.yaml` y los headers de los flows. |
 | [SnakeYAML Engine KMP](https://github.com/krzema12/snakeyaml-engine-kmp) | 4.0.1 | Apache 2.0 | El parser YAML que usa kaml. |
 | [Okio](https://github.com/square/okio) | 3.16.4 | Apache 2.0 | Entrada y salida; dependencia del parser YAML. |
 | [urlencoder-lib](https://github.com/ethauvin/urlencoder) | 1.6.0 | Apache 2.0 | Codificación de URLs; dependencia del parser YAML. |
-| [sqlite-jdbc](https://github.com/xerial/sqlite-jdbc) | 3.53.4.0 | Apache 2.0; incluye código BSD de 2 cláusulas (David Crawshaw) y SQLite (dominio público) | Leer la copia local de la base de Chucker. |
+| [sqlite-jdbc](https://github.com/xerial/sqlite-jdbc) | 3.54.1.0 | Apache 2.0; incluye código BSD de 2 cláusulas (David Crawshaw) y SQLite (dominio público) | Leer la copia local de la base de Chucker. |
 | [JetBrains Java Annotations](https://github.com/JetBrains/java-annotations) | 13.0 | Apache 2.0 | Anotaciones de nulabilidad; dependencia de Kotlin. |
 | [bundletool](https://github.com/google/bundletool) (`tools/`) | 1.18.3 | Apache 2.0, con el aviso del Android Open Source Project | Convertir un AAB en los APKs para el dispositivo. |
 
