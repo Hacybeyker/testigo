@@ -132,9 +132,40 @@ Lo seguro es un tap opcional justo después de esperar la pantalla. Maestro espe
 - assertVisible: { id: "forYou:topicSelection" }   # la pantalla quedó a la vista
 ```
 
-- `runFlow` con `when: visible` evalúa en ese instante: si el diálogo aparece un segundo después, lo salta y el paso siguiente falla con el diálogo encima. Úsalo solo cuando el diálogo ya está o no estará, no para uno que llega con demora.
-- Este es el único uso válido de `optional: true`: cerrar algo que aparece a veces. Nunca en un paso o un assert del caso.
+- `runFlow` con `when: visible` evalúa en ese instante: si el diálogo aparece un segundo después, lo salta y el paso siguiente falla con el diálogo encima. Úsalo solo cuando el diálogo ya está o no estará, no para uno que llega con demora (ver «Capas opcionales»).
+- Este es el único uso válido de `optional: true`: cerrar algo que aparece a veces. Nunca en un paso o un assert del caso, y nunca como espera fija (ver «Esperar a algo concreto»).
 - Si sospechas una ventana del sistema, `pantalla.py` lo confirma: no hay nodos de la app aunque la app tenga el foco. Anótalo en `quirks` y, si sale del build de la app, en `huecos.md`.
+
+## Capas opcionales: coach marks, ofertas, permisos
+
+Hay tres situaciones, y la receta cambia con ellas.
+
+**1. Una capa que puede aparecer o no, sin que nada diga cuál.** Espera la pantalla de destino y cierra la capa con un toque opcional (ver «Diálogos que aparecen a veces»).
+
+**2. Una bifurcación: aparece una de varias cosas** (la oferta de huella, un coach mark, o directo la pantalla). Espera a la que llegue primero con una alternancia en el id (es una expresión regular de cadena completa) y atiende cada variante con `runFlow` y `when: visible`:
+
+```yaml
+- extendedWaitUntil:
+    visible:
+      id: "(biometria_oferta|coach_capa|home_root)"
+    timeout: 20000
+- runFlow:
+    when:
+      visible: { id: biometria_oferta }
+    file: ../subflows/rechazar_huella.yaml
+- runFlow:
+    when:
+      visible: { id: coach_capa }
+    commands:
+      - tapOn: { id: coach_cerrar }
+- assertVisible: { id: home_root }    # el destino, pase lo que pase
+```
+
+Funciona porque, cuando termina la espera, ya se ve la variante que llegó, y `when: visible` evalúa en ese instante. Si una capa puede llegar **después** de la pantalla de destino, no pongas el destino en la alternancia: la espera termina con el destino a la vista y la capa llega tarde.
+
+**3. La capa ya está, o ya no puede aparecer** (la dejó el paso anterior): `runFlow` con `when: visible` directamente, sin espera.
+
+Para dos capas seguidas, pon una espera antes de cada `runFlow`. Un `runFlow` que se salta (`SKIPPED` en el reporte) es lo normal. El subflow que cierra la capa lleva su propio `appId`, `name` y `tags` como cualquier subflow.
 
 ## Permisos del sistema
 
