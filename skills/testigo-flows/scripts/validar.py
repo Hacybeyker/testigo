@@ -75,18 +75,49 @@ for f in files:
                 f"{Path(f).name}:{i + 1} {m.group(2)} con {rel.group(1)}. Compara un solo eje y calza con elementos de otras filas: "
                 "un assert así puede pasar sin probar nada. Usa childOf con la fila, o verifica antes el estado contrario."
             )
+
 # takeScreenshot solo acepta un nombre o una subcarpeta dentro de la carpeta de la corrida.
-SCREENSHOT = re.compile(r"""takeScreenshot:\s*(?:\{\s*path:\s*)?["']?([^"'}\n#]+)""")
-for f in files:
-    for number, line in enumerate(Path(f).read_text(encoding="utf-8").splitlines(), 1):
-        match = SCREENSHOT.search(line)
+TAKE_SCREENSHOT = re.compile(r"^(\s*)-\s+takeScreenshot\s*:(.*)$")
+PATH_KEY = re.compile(r"""\bpath\s*:\s*(?:"([^"]*)"|'([^']*)'|([^\s,}#]+))""")
+
+
+def screenshot_targets(text):
+    """(línea, ruta) de cada takeScreenshot, en sus tres formas: `- takeScreenshot: nombre`, `- takeScreenshot: {label: a, path: b}`
+    y el bloque con `path:` en las líneas siguientes. Las líneas comentadas no cuentan."""
+    lines = text.splitlines()
+    found = []
+    for index, line in enumerate(lines):
+        match = TAKE_SCREENSHOT.match(line)
         if not match:
             continue
-        target = match.group(1).strip()
+        rest = re.sub(r"\s+#.*$", "", match.group(2)).strip()
+        if rest.startswith("{"):
+            key = PATH_KEY.search(rest)
+            if key:
+                found.append((index + 1, next(g for g in key.groups() if g is not None)))
+        elif rest:
+            found.append((index + 1, rest.strip("\"'")))
+        else:
+            for offset in range(index + 1, len(lines)):
+                follow = lines[offset]
+                if follow.strip() and len(follow) - len(follow.lstrip()) <= len(match.group(1)):
+                    break  # el siguiente paso: terminó el bloque
+                if follow.lstrip().startswith("#"):
+                    continue
+                key = re.match(r"\s*" + PATH_KEY.pattern, follow)
+                if key:
+                    found.append((offset + 1, next(g for g in key.groups() if g is not None)))
+    return found
+
+
+for f in files:
+    for number, target in screenshot_targets(Path(f).read_text(encoding="utf-8")):
+        target = target.strip()
         if target.startswith(("/", "\\")) or re.match(r"[A-Za-z]:", target) or ".." in re.split(r"[/\\]", target):
             failed = True
             print(f"1. captura FALLA: {Path(f).name}:{number} takeScreenshot con ruta fuera de la carpeta de la corrida ({target}). "
                   "Maestro la rechaza al correr: usa un nombre (paso1) o una subcarpeta (antes/paso1).")
+
 
 def top_level_steps(text):
     """Los comandos de primer nivel del flow (después de `---`), cada uno con su línea y su texto."""
