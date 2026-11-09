@@ -269,7 +269,7 @@ class RunCommand : CliktCommand(name = "run") {
             rules = rules,
             keepRaw = plan.keepRaw.value,
             timeout = plan.flowTimeout.value.seconds,
-            guard = AdbDeviceGuard(Adb(preflight.adb, ProcessCommandRunner()), preflight.device.serial, preflight.app.packageName),
+            guard = AdbDeviceGuard(Adb(preflight.adb, ProcessCommandRunner()), preflight.device.serial, preflight.app.packageName, preflight.device.sdk),
             progress = { echo("  $it") },
         ).run(
             plan.flows,

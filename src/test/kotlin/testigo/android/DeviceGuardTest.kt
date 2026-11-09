@@ -27,6 +27,12 @@ class DeviceGuardTest {
         var asleep = false
         var keyguard = false
 
+        /** Si no es null, lo que `dumpsys power` dice de `mWakefulness` en lugar de Awake o Asleep. */
+        var wakefulness: String? = null
+
+        /** Si no es null, el volcado de `dumpsys window policy` que contesta, en lugar de un `showing=` suelto. */
+        var policyDump: String? = null
+
         /** Un bloqueo con PIN: `wm dismiss-keyguard` no lo quita. */
         var secure = false
         val shells = mutableListOf<String>()
@@ -42,15 +48,18 @@ class DeviceGuardTest {
                 shell.startsWith("cmd package resolve-activity") ->
                     ok(if (resolves) "priority=0 preferredOrder=0 match=0x108000\ncom.empresa.app/.MainActivity\n" else "No activity found\n")
                 shell.startsWith("dumpsys power") ->
-                    ok(if (asleep) "  mWakefulness=Asleep\nmWakefulness=0\n" else "  mWakefulness=Awake\nmWakefulness=1\n")
-                shell.startsWith("dumpsys window policy") -> ok("      showing=$keyguard\n")
+                    ok(wakefulness ?: if (asleep) "  mWakefulness=Asleep\nmWakefulness=0\n" else "  mWakefulness=Awake\nmWakefulness=1\n")
+                shell.startsWith("dumpsys window policy") -> ok(policyDump ?: "      showing=$keyguard\n")
                 shell == "input keyevent KEYCODE_WAKEUP" -> {
                     asleep = false
                     keyguard = true // al despertar, Android muestra el keyguard
                     ok("")
                 }
                 shell == "wm dismiss-keyguard" -> {
-                    if (!secure) keyguard = false
+                    if (!secure) {
+                        keyguard = false
+                        policyDump = policyDump?.replace("showing=true", "showing=false")
+                    }
                     ok("")
                 }
                 else -> ok("")
@@ -62,10 +71,11 @@ class DeviceGuardTest {
 
     private var clock = 0L
 
-    private fun guard(device: FakeDevice, readyTimeout: Duration = 3.minutes) = AdbDeviceGuard(
+    private fun guard(device: FakeDevice, readyTimeout: Duration = 3.minutes, sdk: Int? = null) = AdbDeviceGuard(
         adb = Adb(Path.of("adb"), device),
         serial = "emulator-5554",
         packageName = "com.empresa.app",
+        sdk = sdk,
         readyTimeout = readyTimeout,
         sleep = { clock += it.inWholeMilliseconds },
         now = { clock },
@@ -180,5 +190,135 @@ class DeviceGuardTest {
         guard(device).beforeFlow()
 
         assertFalse(device.shells.any { it.startsWith("input ") || it.startsWith("wm ") }, device.shells.toString())
+    }
+
+    @Test
+    fun `en Android 6 o anterior no existe resolve-activity y no hace esperar 15 s en cada flow`() {
+        val device = FakeDevice().apply { resolves = false } // un comando que no existe nunca contesta con una Activity
+
+        val old = guard(device, sdk = 23).beforeFlow()
+
+        assertNull(old.problem)
+        assertEquals(0L, clock, "con API 23 solo se mira que el Package Manager vea la app")
+        assertFalse(device.shells.any { it.startsWith("cmd package resolve-activity") }, device.shells.toString())
+
+        clock = 0
+        guard(device, sdk = 24).beforeFlow()
+        assertTrue(clock >= 15_000L, "desde API 24 sí lo pregunta, y espera el margen: $clock")
+    }
+
+    @Test
+    fun `con el salvapantallas puesto manda una tecla, porque tapa la app`() {
+        val device = FakeDevice().apply { wakefulness = "  mWakefulness=Dreaming\nmWakefulness=2\n" }
+
+        val check = guard(device).beforeFlow()
+
+        assertTrue("input keyevent KEYCODE_WAKEUP" in device.shells, device.shells.toString())
+        assertTrue(check.notes.any { "pantalla estaba apagada" in it }, check.notes.toString())
+    }
+
+    @Test
+    fun `un reinicio que se avisa como ocurrido durante un flow no se avisa otra vez como previo al siguiente`() {
+        val device = FakeDevice()
+        val guard = guard(device)
+        guard.beforeFlow()
+
+        device.bootReadable = false
+        assertTrue(guard.restartedDuringFlow(), "adb no contesta al terminar: se reinicia")
+        device.bootReadable = true
+        device.boot = "boot-2"
+        val next = guard.beforeFlow()
+
+        assertFalse(next.restarted, "el reinicio ya se contó en el flow anterior")
+        device.boot = "boot-3"
+        assertTrue(guard.beforeFlow().restarted, "pero el nuevo boot id sí quedó como referencia")
+    }
+
+    @Test
+    fun `lee la salida real de Android 17 sin bloqueo, sin tocar nada`() {
+        val device = FakeDevice().apply { policyDump = ANDROID_17_UNLOCKED }
+
+        val check = guard(device).beforeFlow()
+
+        assertNull(check.problem)
+        assertFalse(device.shells.any { it.startsWith("input ") || it.startsWith("wm ") }, device.shells.toString())
+    }
+
+    @Test
+    fun `con la salida real de Android 17 con PIN, que ya no trae secure, intenta quitarlo y dice que no se puede`() {
+        val device = FakeDevice().apply {
+            policyDump = ANDROID_17_PIN_LOCKED
+            secure = true
+        }
+
+        val problem = guard(device).beforeFlow().problem
+
+        assertTrue("wm dismiss-keyguard" in device.shells, "sin secure= en el volcado no puede saber que es de PIN: lo intenta")
+        assertTrue("PIN, patrón o contraseña" in problem!!, problem)
+    }
+
+    @Test
+    fun `si el volcado dice secure true no intenta quitar el keyguard`() {
+        val device = FakeDevice().apply { policyDump = OLDER_SECURE }
+
+        val problem = guard(device).beforeFlow().problem
+
+        assertFalse("wm dismiss-keyguard" in device.shells, "un keyguard seguro no se quita con dismiss-keyguard: ${device.shells}")
+        assertEquals(0L, clock, "y no pierde un segundo esperando")
+        assertTrue("PIN, patrón o contraseña" in problem!! && "locksettings clear" in problem, problem)
+    }
+
+    @Test
+    fun `con secure false, un keyguard de deslizar, sigue quitandolo`() {
+        val device = FakeDevice().apply {
+            policyDump = OLDER_SECURE.replace("secure=true", "secure=false")
+            secure = false
+            keyguard = true
+        }
+
+        val check = guard(device).beforeFlow()
+
+        assertNull(check.problem)
+        assertTrue("wm dismiss-keyguard" in device.shells)
+    }
+
+    private companion object {
+        /**
+         * `adb shell dumpsys window policy` capturado de un emulador con Android 17 (API 37.0), recortado al bloque
+         * KeyguardServiceDelegate. Pantalla encendida y sin bloqueo. Esta versión ya no imprime `secure=`, solo `simSecure=`.
+         */
+        val ANDROID_17_UNLOCKED = """
+            KeyguardServiceDelegate
+              showing=false
+              inputRestricted=false
+              occluded=false
+              trusted=false
+              simSecure=false
+              dreaming=false
+              systemReady=true
+              deviceHasKeyguard=true
+              enabled=true
+              userId=0
+              bootCompleted=true
+              screenState=SCREEN_STATE_ON
+              interactiveState=INTERACTIVE_STATE_AWAKE
+        """.trimIndent()
+
+        /** Lo mismo, capturado con un PIN puesto y la pantalla recién despertada de un `KEYCODE_SLEEP`. */
+        val ANDROID_17_PIN_LOCKED = ANDROID_17_UNLOCKED.replace("showing=false", "showing=true").replace("inputRestricted=false", "inputRestricted=true")
+
+        /**
+         * El formato con `secure=` de versiones anteriores de Android. NO está capturado de un dispositivo: es la forma que
+         * tiene `KeyguardServiceDelegate` en el código de AOSP, reducida a las líneas que lee el guardián.
+         */
+        val OLDER_SECURE = """
+            KeyguardServiceDelegate
+              showing=true
+              showingAndNotOccluded=true
+              inputRestricted=true
+              occluded=false
+              secure=true
+              dreaming=false
+        """.trimIndent()
     }
 }
