@@ -42,6 +42,16 @@ En este orden:
 6. **`index`**, solo en listas de orden fijo.
 7. **Nunca `point`.**
 
+### Vistas propias con nodos virtuales de accesibilidad
+
+Una vista que dibuja ella misma sus elementos (un teclado numérico dibujado en un `Canvas`, una cuadrícula, un gráfico) no tiene vistas hijas: Maestro solo ve un rectángulo. Si la vista expone **nodos virtuales de accesibilidad** (`AccessibilityNodeProvider`, o `ExploreByTouchHelper` en una vista propia), cada elemento aparece en la jerarquía como un nodo con `text` o `content-desc` y sus `bounds`, aunque no tenga `resource-id`, y se selecciona por texto como cualquier otro. `tapOn: "1"` funcionó a la primera sobre las teclas virtuales de un teclado de PIN.
+
+- Confírmalo con `pantalla.py`: dentro de la vista salen nodos con texto y `bounds` propios, sin `id`.
+- Un texto corto (`"1"`) calza con **cualquier** nodo cuyo texto sea exactamente ese, también un contador o una etiqueta: ancla con `childOf` el contenedor, o confirma la pantalla con un assert antes de tocar.
+- El orden en pantalla (un teclado que se baraja por seguridad) sale de los `bounds`: ordena los nodos por `top` y luego `left`. Un flow que depende de un orden fijo necesita que el build de pruebas lo fije: es un hueco.
+- El texto que compara Maestro es el accesible, no el que se pinta: un `MaterialButton` con mayúsculas muestra «FINALIZAR», pero su texto es «Finalizar».
+- Si la vista no expone nodos, sus elementos no se pueden tocar sin `point`, que está prohibido: va a `huecos.md` con el cambio sugerido (nodos virtuales con `contentDescription`).
+
 ## 3. Reglas extra cuando todo va por texto
 
 - **Confirma la pantalla antes de actuar:** un `assertVisible` o `extendedWaitUntil` de un texto propio de la pantalla. Un mismo texto («Guardar», «Continuar») puede estar en muchas pantallas.
@@ -53,7 +63,7 @@ En este orden:
 
 Ordena `huecos.md` por cuánto arregla cada cambio:
 
-1. **Una línea que arregla todo Compose:** `Modifier.semantics { testTagsAsResourceId = true }` en la raíz de cada pantalla o en el `Scaffold` común, y en cada `Dialog`, `ModalBottomSheet` o `Popup` que lo necesite.
+1. **Una línea que arregla todo Compose:** `Modifier.semantics { testTagsAsResourceId = true }` en la raíz de cada pantalla o en el `Scaffold` común, y otra vez en la raíz del contenido de cada `Dialog`, `ModalBottomSheet` y `Popup`: viven en su propia ventana y no heredan el de la pantalla.
 2. **Componentes compartidos:** un `testTag` o `android:id` en el componente del design system (botón, celda, póster) cubre todas las pantallas que lo usan.
 3. **Pantalla por pantalla:** solo los elementos que los flows tocan, con la convención `<pantalla>_<elemento>`.
 4. **Estado accesible:** `toggleable`, `selectable` o `stateDescription` donde el estado solo se ve en un ícono.

@@ -47,7 +47,25 @@ grep -rln --exclude-dir=build --exclude-dir=.gradle 'class .*OrdersFragment\|fun
   ```
 
   Sin `testTagsAsResourceId`, los `testTag` no sirven: no hay ids, y el flow va por texto. Anótalo en los huecos.
-- **Ventanas aparte:** `Dialog`, `ModalBottomSheet`, `Popup` y `DropdownMenu` crean otra composición. El `testTagsAsResourceId` de la pantalla puede no alcanzarlas: confírmalo en la jerarquía.
+- **Ventanas aparte (diálogos):** `Dialog`, `AlertDialog`, `ModalBottomSheet`, `Popup` y `DropdownMenu` viven en su propia ventana, con su propio árbol de semántica: el `testTagsAsResourceId` de la pantalla no las alcanza. **Cada una lleva el suyo, en la raíz de su contenido.** Con eso, sus `testTag` (`modal_error`) se seleccionan con `id:` como los de la pantalla (observado en diálogos de error y de confirmación).
+
+  ```kotlin
+  // Una vez, en la raíz de la app o del Scaffold común
+  Box(Modifier.semantics { testTagsAsResourceId = true }) { AppNavHost() }
+
+  // Y otra vez en cada ventana aparte
+  Dialog(onDismissRequest = onDismiss) {
+      Surface(Modifier.semantics { testTagsAsResourceId = true }.testTag("modal_error")) { /* contenido */ }
+  }
+  ```
+
+  Para ver cuáles faltan, busca las ventanas y mira si la raíz de su contenido lo trae:
+
+  ```sh
+  grep -rn --exclude-dir=build --exclude-dir=.gradle -E '\b(Dialog|AlertDialog|ModalBottomSheet|Popup)\(' --include='*.kt' .
+  ```
+
+  Confírmalo siempre en la jerarquía: con el diálogo abierto, `pantalla.py` debe mostrar su `id`.
 - **Textos:** `Text(text = stringResource(R.string.x))` → el texto de `strings.xml`. `Text(text = item.name)` → dato que cambia.
 - **Content description:** `Icon(..., contentDescription = stringResource(...))` sirve como `text:`. Con `contentDescription = null` no hay nada que seleccionar.
 - **Fusión de semántica:** `Button`, `clickable`, `NavigationBarItem`, `ListItem` y `Card(onClick)` fusionan los textos de sus hijos en un solo nodo. Selecciona por el texto del hijo: el tap cae en el contenedor clickable.
