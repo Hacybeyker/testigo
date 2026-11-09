@@ -15,6 +15,8 @@ import com.github.ajalt.clikt.parameters.types.int
 import com.github.ajalt.clikt.parameters.types.path
 import testigo.TestigoException
 import testigo.ExitCode
+import testigo.android.AdbDeviceGuard
+import testigo.android.Adb
 import testigo.android.AndroidSdk
 import testigo.config.ConfigEdit
 import testigo.config.ConfigEditor
@@ -48,6 +50,7 @@ import testigo.report.RunReport
 import testigo.video.Recorder
 import testigo.video.ScreenRecorder
 import java.nio.file.Path
+import kotlin.time.Duration.Companion.seconds
 import kotlin.io.path.isDirectory
 import kotlin.io.path.isRegularFile
 import kotlin.io.path.name
@@ -102,6 +105,11 @@ class RunCommand : CliktCommand(name = "run") {
         "--repeat",
         help = "Corre los flows N veces seguidas, en rondas, y dice cuáles fallan solo a veces. De 1 a 20. Por defecto, 1.",
     ).int()
+    private val flowTimeout by option(
+        "--flow-timeout",
+        help = "Segundos máximos de cada flow: pasado ese tiempo se corta Maestro y el flow falla. De 30 a 3600. " +
+            "Por defecto, defaults.flow_timeout_s o 600.",
+    ).int()
     private val save by option(
         "--save",
         help = "Guarda en testigo.yaml lo que pasaste con --app, --profile, --flows (uno solo), --video-bitrate, --network-format, " +
@@ -131,6 +139,7 @@ class RunCommand : CliktCommand(name = "run") {
             keepRaw = keepRaw,
             redact = redact,
             repeat = repeat,
+            flowTimeout = flowTimeout,
         )
 
         val plan = try {
@@ -259,6 +268,8 @@ class RunCommand : CliktCommand(name = "run") {
             network = networkCapture,
             rules = rules,
             keepRaw = plan.keepRaw.value,
+            timeout = plan.flowTimeout.value.seconds,
+            guard = AdbDeviceGuard(Adb(preflight.adb, ProcessCommandRunner()), preflight.device.serial, preflight.app.packageName),
             progress = { echo("  $it") },
         ).run(
             plan.flows,
@@ -375,6 +386,7 @@ class RunCommand : CliktCommand(name = "run") {
         "redact" to plan.redact.value,
         "keep_raw" to plan.keepRaw.value,
         "repeat" to plan.repeat,
+        "flow_timeout_s" to plan.flowTimeout.value,
         "ci" to plan.ci,
         "tags" to plan.tags,
         "exclude_tags" to plan.excludeTags,

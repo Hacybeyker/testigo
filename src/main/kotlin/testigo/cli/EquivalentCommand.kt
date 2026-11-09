@@ -50,6 +50,7 @@ object EquivalentCommand {
         if (plan.keepRaw.source == Source.FLAG) args += "--keep-raw"
         if (plan.redact.source == Source.FLAG) args += if (plan.redact.value) "--redact" else "--no-redact"
         if (plan.repeat > 1) args += listOf("--repeat", plan.repeat.toString())
+        if (plan.flowTimeout.source == Source.FLAG) args += listOf("--flow-timeout", plan.flowTimeout.value.toString())
 
         return args.joinToString(" ") { shellQuote(it) }
     }

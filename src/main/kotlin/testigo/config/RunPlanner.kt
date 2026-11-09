@@ -87,6 +87,8 @@ class RunPlanner(
             throw TestigoException("--repeat debe estar entre ${Repeat.MIN} y ${Repeat.MAX}: $repeat")
         }
 
+        val flowTimeout = resolveFlowTimeout(options.flowTimeout, config.defaults.flowTimeoutS)
+
         return RunPlan(
             cwd = cwd,
             project = project,
@@ -110,7 +112,19 @@ class RunPlanner(
             redact = redact,
             warnings = warnings,
             repeat = repeat,
+            flowTimeout = flowTimeout,
         )
+    }
+
+    private fun resolveFlowTimeout(flag: Int?, fromProject: Int?): Resolved<Int> {
+        if (flag != null && flag !in FlowTimeout.MIN_S..FlowTimeout.MAX_S) {
+            throw TestigoException("--flow-timeout debe estar entre ${FlowTimeout.MIN_S} y ${FlowTimeout.MAX_S} (segundos): $flag")
+        }
+        return when {
+            flag != null -> Resolved(flag, Source.FLAG)
+            fromProject != null -> Resolved(fromProject, Source.PROJECT)
+            else -> Resolved(FlowTimeout.DEFAULT_S, Source.DEFAULT)
+        }
     }
 
     private fun resolveProfile(flag: Profile?, fromProject: Profile?): Resolved<Profile> = when {

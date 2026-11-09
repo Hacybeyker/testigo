@@ -58,6 +58,10 @@ object RunReport {
         val device = context.device.let { d -> "${d.model} · Android ${d.androidRelease}" + (d.sdk?.let { " (API $it)" } ?: "") }
         appendLine((listOf(device, "perfil ${context.profile}") + outcome(result) + FlowExecutor.format(result.duration)).joinToString(" · "))
         appendLine()
+        result.aborted?.let { reason ->
+            appendLine("**Corrida interrumpida:** ${cell(reason)}" + if (result.notRun > 0) " No corrieron ${quantity(result.notRun, "corrida", "corridas")}." else "")
+            appendLine()
+        }
         if (result.repeat > 1) {
             appendLine("| Flow | Corridas | Resultado | Duración media | Alertas |")
             appendLine("| --- | --- | --- | --- | --- |")
@@ -84,6 +88,13 @@ object RunReport {
             appendLine()
             appendLine("### Por qué falló")
             failed.forEach { flow -> appendLine("- **${cell(result.label(flow))}**: ${cell(flow.reason!!.lines().first())}") }
+        }
+
+        val withDeviceNote = result.flows.filter { it.deviceNote != null }
+        if (withDeviceNote.isNotEmpty()) {
+            appendLine()
+            appendLine("### Dispositivo")
+            withDeviceNote.forEach { flow -> appendLine("- **${cell(result.label(flow))}**: ${cell(flow.deviceNote!!)}") }
         }
 
         result.flows.forEach { flow ->
@@ -173,6 +184,10 @@ object RunReport {
             put("repeat", result.repeat)
             put("flaky", result.flaky)
         }
+        if (result.aborted != null) {
+            put("aborted", result.aborted)
+            put("not_run", result.notRun)
+        }
     }
 
     private fun flow(flow: FlowResult, result: RunResult, cwd: Path): Map<String, Any?> {
@@ -184,6 +199,8 @@ object RunReport {
             "status" to if (flow.status == FlowStatus.PASSED) "passed" else "failed",
             "duration_s" to seconds(flow.duration.inWholeMilliseconds),
             "reason" to flow.reason,
+            "timed_out" to flow.timedOut,
+            "device_note" to flow.deviceNote,
             "crash" to flow.crash,
             "network" to summary?.let {
                 linkedMapOf(

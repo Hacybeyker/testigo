@@ -24,6 +24,11 @@ object ProjectValidator {
                     add("video.bitrate_mbps debe estar entre ${VideoConfig.MIN_MBPS} y ${VideoConfig.MAX_MBPS}: $mbps")
                 }
             }
+            config.defaults.flowTimeoutS?.let { seconds ->
+                if (seconds !in FlowTimeout.MIN_S..FlowTimeout.MAX_S) {
+                    add("defaults.flow_timeout_s debe estar entre ${FlowTimeout.MIN_S} y ${FlowTimeout.MAX_S} (segundos): $seconds")
+                }
+            }
             if (config.alerts.slowMs <= 0) add("alerts.slow_ms debe ser mayor que 0")
             if (config.redact.headers.any { it.isBlank() }) add("redact.headers no puede tener valores vacíos")
             if (config.redact.jsonKeys.any { it.isBlank() }) add("redact.json_keys no puede tener valores vacíos")

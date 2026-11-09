@@ -87,6 +87,7 @@ Lo que tiene una sola opción no se pregunta. Si la terminal no permite listas d
 | Opción | Valores | Por defecto | Qué hace |
 | --- | --- | --- | --- |
 | `--repeat` | 1 a 20 | 1 | Corre la lista de flows esas veces, en rondas (todos, y otra vez), y dice de cada flow si es estable, intermitente o falla siempre. Sirve para saber si un flow nuevo es confiable antes de sumarlo a la suite (ver [Repeticiones](#repeticiones)). |
+| `--flow-timeout` | 30 a 3600 (segundos) | `defaults.flow_timeout_s`; si no, 600 | Tiempo máximo de cada flow. Pasado ese tiempo, `testigo` corta Maestro y el flow falla, con la evidencia que alcanzó a dejar. Sin esto, un Maestro colgado detiene la corrida para siempre. Tras un corte, el flow siguiente reinstala el driver de Maestro. |
 | `--dry-run` | — | apagado | Muestra el plan y revisa la política local-only, sin tocar el dispositivo ni ejecutar nada. |
 | `--ci` | — | apagado | No pregunta nada (ni modo interactivo ni confirmaciones) y genera `junit.xml`. |
 | `--save` | — | apagado | Guarda en `testigo.yaml` lo que pasaste con `--app`, `--profile`, `--flows` (uno solo), `--video-bitrate`, `--network-format`, `--redact` / `--no-redact` u `--out`, con las mismas reglas que el modo interactivo. Con `--dry-run` no guarda nada. |
@@ -109,7 +110,7 @@ Un perfil es un atajo para `--record`, `--network` y `--logs`. Sirve en scripts 
 | --- | --- |
 | 0 | Todos los flows pasaron. |
 | 1 | Al menos un flow falló (también por un crash de la app). Con `--repeat`, basta con una corrida que falle. |
-| 2 | Error de entorno o configuración: sin dispositivo, artefacto inválido, falta una herramienta, un `testigo.yaml` con errores, un flow que Maestro no acepta o un flag mal escrito. |
+| 2 | Error de entorno o configuración: sin dispositivo, artefacto inválido, falta una herramienta, un `testigo.yaml` con errores, un flow que Maestro no acepta o un flag mal escrito. También, a mitad de la corrida, un dispositivo que deja de estar listo o tiene un bloqueo con PIN: la corrida se detiene, dice cuántas corridas no se ejecutaron y lo deja en `summary.md` y `metadata.json` (`aborted`). |
 | 3 | La política local-only bloqueó la corrida. Maestro no se ejecutó. |
 | 4 | Con `--redact`, el leak scan encontró datos sin enmascarar: la evidencia no es apta para compartir. |
 | 130 | Se canceló una pregunta del modo interactivo. |
@@ -300,6 +301,7 @@ maestro:
 
 defaults:
   profile: dev                   # perfil cuando no se pasa --profile
+  flow_timeout_s: 600            # de 30 a 3600: tiempo máximo de cada flow (--flow-timeout)
 
 video:
   bitrate_mbps: 4                # de 4 a 8
@@ -432,7 +434,18 @@ El video y los screenshots no se pueden sanitizar: usa solo usuarios ficticios d
 - **Firma de un AAB:** los APKs que genera `bundletool` se firman con `app.signing` o, sin eso, con la debug key de Android Studio (`~/.android/debug.keystore`). En una máquina que nunca compiló una app esa clave no existe: el runner lo dice antes de generar nada, y `testigo setup` la crea (o el comando `keytool` que muestra el mensaje).
 - **Firma distinta:** desinstalar borra los datos de la app, así que pregunta antes. Con `--ci` no pregunta y termina con código 2.
 
-El runner guarda su estado en `~/.testigo/` (`installs.properties` y `cache/`). Se puede borrar sin problema: la siguiente corrida reinstala.
+### Antes y después de cada flow
+
+Un emulador que se reinicia solo, una pantalla que se apaga o un Maestro que se cuelga hacen fallar un flow por culpa del entorno, y ese fallo se parece a un defecto de la app. Por eso, alrededor de cada flow `testigo` revisa el dispositivo:
+
+- **Antes:** espera hasta 3 minutos a que Android termine de arrancar (`sys.boot_completed`) y a que resuelva la app. Enciende la pantalla si estaba apagada y descarta el bloqueo de deslizar. Un bloqueo con PIN, patrón o contraseña no se puede saltar: la corrida se detiene con código 2 y dice cómo quitarlo en el dispositivo de pruebas. Si el dispositivo no está listo a tiempo, la corrida también se detiene con código 2, y `summary.md` dice cuántas corridas no se ejecutaron.
+- **Reinicio:** compara el `boot_id` del kernel entre flows. Si el dispositivo se reinició (o dejó de responder) durante un flow, o antes de empezarlo, el flow queda anotado (`device_note` en `metadata.json`, sección *Dispositivo* de `summary.md`), un fallo lleva «no lo tomes como un defecto de la app» al principio de su motivo, y el flow siguiente reinstala el driver de Maestro.
+- **Tiempo máximo:** cada flow tiene un tiempo máximo (`--flow-timeout`, 10 minutos por defecto). Pasado, se corta Maestro y todo lo que lo lanzó.
+- **Logcat:** el buffer del dispositivo sube a 16 MiB mientras corre el flow y vuelve a su tamaño al terminar, para que una ráfaga de `adb shell input` no se coma líneas. El `adb logcat` de una corrida anterior que murió sin limpiar se cierra al empezar; el de otra corrida en marcha, no.
+
+`testigo` no cambia ajustes del dispositivo (no activa «mantener pantalla encendida» ni toca el tiempo de apagado). Si un flow espera mucho sin tocar la pantalla, el equipo puede apagarla: en un emulador, `adb shell svc power stayon true` y, si el emulador reporta que no está cargando, `adb shell dumpsys battery set ac 1` (se deshace con `dumpsys battery reset`).
+
+El runner guarda su estado en `~/.testigo/` (`installs.properties`, `cache/` y `run/`, con el pid de la captura de logcat en curso). Se puede borrar sin problema: la siguiente corrida reinstala.
 
 `bundletool` no es una dependencia Maven: `./gradlew build` descarga una vez el jar oficial de GitHub, verifica su SHA-256 y lo deja en `.gradle/downloads/`. La distribución lo lleva en `tools/`, fuera del classpath, porque el jar trae su propia versión de Kotlin.
 

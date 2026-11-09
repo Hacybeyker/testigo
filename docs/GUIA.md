@@ -313,6 +313,8 @@ adb devices              # una línea con el serial y "device"
 
 La primera vez, Maestro instala en el dispositivo su driver (`dev.mobile.maestro`); en Xiaomi hay que confirmar esa instalación en el teléfono.
 
+Antes de cada flow, `testigo` espera a que el dispositivo esté listo (un emulador puede reiniciarse a mitad de una corrida), enciende la pantalla si se apagó y quita el bloqueo de deslizar. **Quita el PIN, el patrón o la contraseña del dispositivo de pruebas** (en un emulador, `adb shell locksettings clear --old <PIN>`): `testigo` no puede saltarlos y la corrida se detiene con código 2. Un flow que se cuelga se corta a los 10 minutos (`--flow-timeout` lo cambia).
+
 ## 6. Crear la suite con `testigo init`
 
 La suite vive fuera del repo de la app, por ejemplo en una carpeta hermana. Créala y ejecuta `testigo init` dentro:
@@ -594,7 +596,7 @@ testigo doctor && testigo run --ci --profile smoke
 | --- | --- |
 | 0 | Todos los flows pasaron. |
 | 1 | Al menos un flow falló, también si con `--repeat` falló una sola vez. |
-| 2 | Entorno o configuración: sin dispositivo, falta una herramienta, un `testigo.yaml` o un flag con errores. |
+| 2 | Entorno o configuración: sin dispositivo, falta una herramienta, un `testigo.yaml` o un flag con errores. También, a mitad de la corrida, un dispositivo que deja de estar listo o tiene un bloqueo con PIN. |
 | 3 | La política local-only bloqueó la corrida antes de ejecutar Maestro. |
 | 4 | Con `--redact`, quedaron datos sin enmascarar. |
 | 130 | Se canceló (Ctrl+C). |

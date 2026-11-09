@@ -57,6 +57,12 @@ class EquivalentCommandTest {
     }
 
     @Test
+    fun `incluye --flow-timeout solo si vino por flag`() {
+        assertFalse(build(RunOptions()).contains("--flow-timeout"))
+        assertTrue(build(RunOptions(flowTimeout = 120)).endsWith("--flow-timeout 120"), build(RunOptions(flowTimeout = 120)))
+    }
+
+    @Test
     fun `incluye --repeat solo si es mas de una vez`() {
         assertFalse("--repeat" in build(RunOptions(profile = Profile.DEV, repeat = 1)))
         assertTrue(build(RunOptions(profile = Profile.DEV, repeat = 3)).endsWith(" --repeat 3"))

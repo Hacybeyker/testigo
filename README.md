@@ -152,6 +152,7 @@ Cada valor sale, en este orden, del flag, del perfil, de `testigo.yaml` o del va
 | `--redact` / `--no-redact` | — | `redact.enabled`; si no, apagado | Enmascara tokens, claves y datos personales, y revisa que no quede ninguno. |
 | `--keep-raw` | — | `evidence.keep_raw`; si no, apagado | Conserva los datos sin procesar en `raw/`. Solo para depurar. |
 | `--repeat` | 1 a 20 | 1 | Corre los flows esas veces, en rondas, y dice cuáles son estables y cuáles fallan solo a veces. |
+| `--flow-timeout` | 30 a 3600 (s) | `defaults.flow_timeout_s`; si no, 600 | Tiempo máximo de cada flow: pasado, corta Maestro y el flow falla. |
 | `--dry-run` | — | apagado | Muestra el plan sin tocar el dispositivo ni ejecutar nada. |
 | `--ci` | — | apagado | No pregunta nada y genera `junit.xml`. |
 | `--save` | — | apagado | Guarda en `testigo.yaml` lo que pasaste con `--app`, `--profile`, `--flows` (uno), `--video-bitrate`, `--network-format`, `--redact` u `--out`, sin tocar sus comentarios. |
@@ -174,7 +175,7 @@ Un flag explícito gana sobre el perfil: `--profile evidencia --no-record` es ev
 | --- | --- |
 | 0 | Todos los flows pasaron. |
 | 1 | Al menos un flow falló, también si con `--repeat` falló una sola vez. |
-| 2 | Entorno o configuración: sin dispositivo, falta una herramienta, o un `testigo.yaml` o un flag con errores. |
+| 2 | Entorno o configuración: sin dispositivo, falta una herramienta, o un `testigo.yaml` o un flag con errores; también un dispositivo que deja de estar listo a mitad de la corrida. |
 | 3 | La política local-only bloqueó la corrida antes de ejecutar Maestro. |
 | 4 | Con `--redact`, quedaron datos sin enmascarar: la evidencia no es apta para compartir. |
 | 130 | Se canceló (Ctrl+C). |

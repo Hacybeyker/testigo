@@ -40,6 +40,7 @@ object RunPlanRenderer {
             Row("Datos crudos", rawLabel(plan), plan.keepRaw.source),
             Row("Modo CI", yesNo(plan.ci), null),
             Row("Repeticiones", repeatLabel(plan), null).takeIf { plan.repeat > 1 },
+            Row("Tiempo máximo", "${plan.flowTimeout.value} s por flow", plan.flowTimeout.source).takeIf { plan.flowTimeout.source != Source.DEFAULT },
             Row("Local-only", policyLabel(policy), null),
         ).filterNotNull()
         val valueWidth = rows.maxOf { it.value.length }.coerceAtMost(MAX_VALUE_WIDTH)
