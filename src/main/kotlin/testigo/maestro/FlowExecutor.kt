@@ -241,11 +241,12 @@ class FlowExecutor(
         val console = work.resolve(RAW_CONSOLE)
         val video = recorder?.let { VideoSession(it(device), flow, appId) }
         val logCollector = logs?.invoke(device)
-        logCollector?.start(dir)
         val networkCollector = network?.invoke(device)
-        networkCollector?.start()
-        val started = System.nanoTime()
+        var started = System.nanoTime()
         val outcome = try {
+            logCollector?.start(dir)
+            networkCollector?.start()
+            started = System.nanoTime()
             maestro.test(
                 MaestroTest(
                     flow = video?.wrapper ?: flow.path,
@@ -259,6 +260,9 @@ class FlowExecutor(
                 ),
             )
         } catch (e: Exception) {
+            // La corrida se corta aquí y no llega a finish(): sin esto logcat seguiría corriendo y los buffers del dispositivo
+            // quedarían agrandados.
+            runCatching { logCollector?.abort() }
             deleteTree(work)
             Cleanup.unregister(work)
             throw e

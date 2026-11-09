@@ -237,7 +237,7 @@ class RunCommand : CliktCommand(name = "run") {
                     sdk = preflight.device.sdk,
                     runner = ProcessCommandRunner(),
                     keepRaw = plan.keepRaw.value,
-                    pidFile = TestigoHome.dir().resolve("run").resolve("logcat-" + serial.replace(Regex("[^A-Za-z0-9._-]"), "_") + ".pid"),
+                    stateDir = TestigoHome.dir().resolve("run"),
                 )
             }
         } else {
