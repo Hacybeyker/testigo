@@ -79,9 +79,13 @@ class LogCaptureRecoveryTest {
         fun enlarged() = sizes.replaceAll { _, _ -> "16M" }
     }
 
-    /** Un proceso que se hace pasar por `adb -s NJ4 logcat`: tiene esos argumentos en su línea de comando. */
-    private fun fakeLogcat(): Process =
-        ProcessBuilder("sh", "-c", "sleep 60; true", "adb", "-s", "NJ4", "logcat").start().also { processes += it }
+    /**
+     * Un proceso que se hace pasar por `adb -s <serial> logcat`: tiene esos argumentos en su línea de comando. Espera con el
+     * `read` del propio shell, sin lanzar un hijo que quedaría huérfano al matarlo; si la prueba termina, su stdin se cierra
+     * y sale solo.
+     */
+    private fun fakeLogcat(serial: String = "NJ4"): Process =
+        ProcessBuilder("sh", "-c", "read x", "adb", "-s", serial, "logcat").start().also { processes += it }
 
     private fun sleeper(): Process = ProcessBuilder("sleep", "60").start().also { processes += it }
 
@@ -238,7 +242,7 @@ class LogCaptureRecoveryTest {
 
     @Test
     fun `no cierra el adb logcat de otro dispositivo`() {
-        val other = ProcessBuilder("sh", "-c", "sleep 60; true", "adb", "-s", "OTRO", "logcat").start().also { processes += it }
+        val other = fakeLogcat("OTRO")
         store.write(store.file(deadOwner), recordOf(deadOwner, null, other))
 
         assertEquals(emptyList<String>(), StaleCapture.close(store, "NJ4") { true })
