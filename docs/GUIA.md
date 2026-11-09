@@ -564,12 +564,14 @@ evidence/20261016-143012_PROJ-123_a1b2c3d/
     ├── report.html       # reporte de Maestro, paso a paso, con capturas
     ├── video.mp4         # la pantalla, también si el flow falló
     ├── network.txt       # cada request y response, legible
+    ├── network-steps.txt # las llamadas agrupadas por el paso del flow que las disparó
     ├── logcat.txt        # los logs de la app
     └── crash.txt         # solo si la app se cerró
 ```
 
 - **`summary.md`** dice qué pasó, qué falló y por qué, y qué llamadas al backend dieron error o fueron lentas.
 - **`network.txt`** trae cada llamada con método, status, tiempo, headers y bodies, con el JSON formateado. Con `--network-format har` sale un HAR en su lugar, para Chrome DevTools, Charles o Proxyman, y con `ambos`, los dos.
+- **`network-steps.txt`** lista los pasos del flow y, bajo cada uno, las llamadas que salieron mientras corría, sin bodies ni query strings. Sirve para contar las llamadas desde un toque concreto sin partir el flow; ponle `label` al paso para encontrarlo.
 - **Datos exactos por defecto:** la evidencia trae los tokens y bodies tal cual, para poder replicar un request en el backend.
 - **Para compartirla fuera del equipo,** corre con `--redact`: enmascara tokens, claves y datos personales, y si algo se escapa, la corrida termina con código 4 y la evidencia queda marcada como no apta.
 - **El video y las capturas no se pueden enmascarar:** usa siempre usuarios ficticios de QA.

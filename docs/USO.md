@@ -367,6 +367,7 @@ evidence/20261016-143012_PROJ-123_a1b2c3d/   # fecha, ticket del branch y commit
     ├── network.txt           # con red: cada llamada en texto, con el JSON formateado
     ├── network.har           # con --network-format har o ambos
     ├── network-summary.json  # una fila por endpoint y las alertas
+    ├── network-steps.txt     # con red: las llamadas agrupadas por el paso del flow que corría
     ├── raw/                  # solo con --keep-raw
     └── maestro/              # logs, comandos y screenshots de Maestro
         └── console.txt       # salida de consola de Maestro
@@ -381,6 +382,8 @@ evidence/20261016-143012_PROJ-123_a1b2c3d/   # fecha, ticket del branch y commit
 **Logs y crashes.** Antes de cada flow, `logcat -c`; durante el flow, `logcat -v threadtime --uid=<uid de la app>`, así no entran logs de otras apps (Android 9 o anterior no tiene `--uid` y se guarda todo). Al final, `logcat -b crash -d`: si la app crasheó, el crash va a `crash.txt` y el flow falla aunque Maestro haya pasado.
 
 **Red (Chucker).** Al empezar cada flow se guarda la hora del dispositivo. Al terminar, el runner espera a que la base de Chucker deje de crecer, la copia con `adb exec-out run-as <pkg> cat` y toma solo las llamadas desde el inicio del flow, aunque el flow no use `clearState`. `run-as` necesita un build debuggable. Si no lo es, la base se puede leer igual cuando adbd ya corre como root: en un emulador con imagen Google APIs, ejecuta `adb root` antes de la corrida. El runner nunca lo ejecuta por su cuenta, porque reinicia adbd y cortaría la conexión.
+
+**Red por paso.** Para saber qué llamadas disparó cada paso (por ejemplo, cuántas veces salió un `POST` desde un toque) sin partir el flow, `network-steps.txt` cruza los dos relojes. Maestro deja en `commands.json` la hora (de esta máquina) y la duración de cada paso; Chucker, la hora (del dispositivo) de cada request. Al empezar el flow, `testigo` mide el desfase entre los dos relojes con la hora de la máquina antes y después de preguntarle la suya al dispositivo, y lo resta. Cada llamada queda bajo el paso más profundo que corría cuando salió (el del subflow, no su `runFlow`); una que sale entre dos pasos, o pegada al borde por el error de los relojes, va al más cercano, y las que no caben en ninguno quedan en *Fuera de los pasos*. El archivo dice el desfase y su incertidumbre, no lleva headers, bodies ni query strings, y un `label` en el paso (`- tapOn: { text: "Confirmar", label: confirmar_pago }`) aparece entre corchetes para encontrarlo. Necesita Chucker y Maestro 2.x; sin alguno de los dos, el flow queda sin este archivo.
 
 **Resumen.** Las alertas son las llamadas a `network.hosts` con status ≥ 400, sin respuesta o más lentas que `alerts.slow_ms`, más los crashes. Las iguales se agrupan con su cantidad. `summary.md` no lleva bodies ni query strings. El branch y el commit salen del repo de git del artefacto (el de la app) o, si no está en uno, del de la suite; solo se lee git local (`rev-parse` y `status`).
 
