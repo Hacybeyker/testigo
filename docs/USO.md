@@ -554,18 +554,18 @@ src/main/kotlin/testigo/
 ├── Main.kt
 ├── cli/        comandos (Clikt), modo interactivo (Mordant), render del plan y comando equivalente
 ├── config/     testigo.yaml, perfiles, precedencia, plan de la corrida y edición que conserva comentarios
-├── maestro/    flows: descubrimiento, headers y un maestro test por flow
+├── maestro/    flows: descubrimiento, headers, un maestro test por flow y los pasos de `commands.json`
 ├── policy/     política local-only y forma de Maestro: lint de flows y entorno de Maestro
 ├── preflight/  dispositivo, app e instalación antes de los flows
 ├── doctor/     testigo doctor: Java, herramientas, dispositivo, run-as y la base de Chucker
 ├── setup/      testigo setup: revisión de la máquina, descargas verificadas, instaladores y entorno de la terminal
 ├── scaffold/   testigo init: los archivos de una suite nueva
 ├── video/      screenrecord por segmentos y hooks del wrapper
-├── logs/       logcat de la app y crashes
-├── network/    Chucker → texto, HAR 1.2, resumen por endpoint y alertas
+├── logs/       logcat de la app (buffer grande y cierre de capturas viejas) y crashes
+├── network/    Chucker → texto, HAR 1.2, resumen por endpoint, alertas y llamadas por paso
 ├── redact/     presets, sanitización y leak scan
 ├── report/     reporte de Maestro autocontenido, git, summary.md, metadata.json y junit.xml
-├── android/    adb, SDK, elección de dispositivo y acceso a los archivos de la app (run-as o root)
+├── android/    adb, SDK, elección de dispositivo, acceso a los archivos de la app (run-as o root) y el guardián del dispositivo (listo, pantalla, reinicios)
 ├── process/    ejecución de herramientas externas con timeout y limpieza si la corrida se corta
 ├── artifact/   APK o AAB: lectura del manifest, bundletool, caché e instalación
 └── util/
